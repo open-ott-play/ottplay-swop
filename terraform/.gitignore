@@ -1,0 +1,7 @@
+.terraform/
+*.tfstate*
+# Do NOT ignore .terraform.lock.hcl — commit the provider lock file after terraform init.
+terraform.tfvars
+*.auto.tfvars
+crash.log
+override.tf
