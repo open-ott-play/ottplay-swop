@@ -29,8 +29,12 @@ Note: no CF credentials in terraform; keep them outside .tf and state.
 Durable Cloudflare resources (Workers KV namespace) are managed with Terraform Cloud.
 
 - **Organization:** `victron-venus`
-- **Workspace:** `ottplay-swop` — create the workspace in the TFC UI if it does not exist yet; connect it to this GitHub repo (VCS) or use CLI-driven runs.
-- **Workspace variables** (set in TFC, not in git):
+- **Workspace:** `ottplay-swop` — create in the TFC UI if it does not exist yet
+- **Working directory:** `terraform`
+- **Execution mode:** Remote
+- **VCS:** optional — connect this GitHub repo in the TFC UI via the org OAuth app when available; until then use CLI-driven remote runs (same pattern as sibling workspaces)
+- **VCS trigger patterns** (when connected): `terraform/**/*`
+- **Workspace variables** (set in TFC, never in git):
   - `cloudflare_api_token` (sensitive) — Workers Scripts Edit + Workers KV Storage Edit/Read
   - `cloudflare_account_id` — Cloudflare account ID
 
@@ -45,7 +49,7 @@ After apply:
 1. Copy `kv_namespace_id` into local `wrangler.toml` (from `wrangler.toml.example`), or run `scripts/render-wrangler.sh`.
 2. Deploy the Worker with wrangler/CI; then set `PUBLIC_BASE_URL` (or TFC/workspace `public_base_url`) to the workers.dev URL from the first deploy.
 
-**Explicit:** no Cloudflare account IDs, API tokens, or KV IDs in git. The GitHub Terraform module (if any) is separate from this Cloudflare IaC.
+**Credentials never in git.** Root and `terraform/` gitignores exclude wrangler.toml, tfvars, `.env*`, `*.pem`/`*.key`, `credentials.json`, `credentials.tfrc.json`, and local Terraform state/plan files. Do not commit Cloudflare account IDs, API tokens, or KV IDs. The GitHub Terraform module (if any) is separate from this Cloudflare IaC.
 
 Worker script upload stays with wrangler/CI (TypeScript must be bundled); Terraform owns the KV namespace id used in wrangler bindings.
 

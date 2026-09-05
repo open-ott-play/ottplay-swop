@@ -1,12 +1,41 @@
+# Node / Wrangler
 node_modules/
 .wrangler/
 .dev.vars
+.dev.vars.*
 dist/
 *.log
+
+# Local Wrangler config with account/KV ids
 wrangler.toml
+
+# Terraform local credentials & state
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
 terraform.tfvars
 *.auto.tfvars
-.terraform/
-*.tfstate*
-crash.log
-override.tf
+*.auto.tfvars.json
+local.secrets.tfvars
+local.*.tfvars
+!terraform.tfvars.example
+!*.tfvars.example
+
+# Generic secrets / credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.key
+credentials.json
+credentials.tfrc.json
+.terraform.d/
