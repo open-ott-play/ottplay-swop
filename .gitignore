@@ -4,3 +4,9 @@ node_modules/
 dist/
 *.log
 wrangler.toml
+terraform.tfvars
+*.auto.tfvars
+.terraform/
+*.tfstate*
+crash.log
+override.tf

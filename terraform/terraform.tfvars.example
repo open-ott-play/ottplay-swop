@@ -1,0 +1,3 @@
+cloudflare_api_token  = "cf_xxxxx"
+cloudflare_account_id  = "YOUR_ACCOUNT_ID"
+# public_base_url      = "https://ottplay-swop.<subdomain>.workers.dev"
