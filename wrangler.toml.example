@@ -1,0 +1,17 @@
+# Copy to wrangler.toml (gitignored) and fill in real values locally.
+# Never commit wrangler.toml — it must never contain committed secrets
+# (account IDs, API tokens, or production KV namespace IDs with secrets).
+
+name = "ottplay-swop"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+
+# account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"
+
+[[kv_namespaces]]
+binding = "SWOP"
+id = "YOUR_KV_NAMESPACE_ID"
+
+[vars]
+PUBLIC_BASE_URL = "https://example.workers.dev"
+SESSION_TTL_SECONDS = "600"

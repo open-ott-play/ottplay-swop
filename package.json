@@ -1,0 +1,16 @@
+{
+  "name": "ottplay-swop",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "cf-typegen": "wrangler types"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250905.0",
+    "typescript": "^5.9.2",
+    "wrangler": "^4.34.0"
+  }
+}
