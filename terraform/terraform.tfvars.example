@@ -1,3 +1,6 @@
-cloudflare_api_token  = "cf_xxxxx"
-cloudflare_account_id  = "YOUR_ACCOUNT_ID"
-# public_base_url      = "https://ottplay-swop.<subdomain>.workers.dev"
+# For TFC remote runs set workspace variables: account, email, key (key = sensitive).
+# Local overrides (gitignored): copy to terraform.tfvars or pass -var / TF_VAR_account etc.
+account = "YOUR_CLOUDFLARE_ACCOUNT_ID"
+email   = "you@example.com"
+key     = "YOUR_GLOBAL_API_KEY"
+# public_base_url = "https://ottplay-swop.<subdomain>.workers.dev"

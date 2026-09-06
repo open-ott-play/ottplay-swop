@@ -2,6 +2,6 @@
 # bundled before upload. Terraform owns durable Cloudflare infra only —
 # here the KV namespace id used in wrangler bindings.
 resource "cloudflare_workers_kv_namespace" "swop" {
-  account_id = var.cloudflare_account_id
+  account_id = var.account
   title      = var.kv_title
 }
