@@ -218,6 +218,50 @@ After apply:
 
 Worker script upload stays with wrangler/CI (TypeScript must be bundled); Terraform owns the KV namespace id used in wrangler bindings.
 
+### Running locally (disconnect from Terraform Cloud)
+
+Use this when you want `terraform plan` / `apply` on your machine **without** HCP Terraform remote execution or remote state.
+
+Work from the Terraform root: `cd terraform`. The `cloud {}` block lives in `terraform/versions.tf` (organization `open-ott-play`, workspace `ottplay-swop`).
+
+#### Temporary detach (recommended for experiments)
+
+1. Comment out the entire `cloud { ... }` block in `terraform/versions.tf`.
+2. Clear the local backend cache:
+   ```bash
+   cd terraform
+   rm -rf .terraform
+   ```
+3. Re-init (local state by default):
+   ```bash
+   terraform init
+   ```
+4. Provide variables locally — TFC workspace variables are **not** used when detached:
+   ```bash
+   # e.g. terraform.tfvars (gitignored) or:
+   # export TF_VAR_account=... TF_VAR_email=... TF_VAR_key=...
+   terraform plan
+   terraform apply
+   ```
+
+#### Keep existing remote state locally (optional)
+
+While still attached to TFC (from `terraform/`):
+
+```bash
+terraform state pull > terraform.tfstate
+```
+
+Then comment out `cloud {}` in `versions.tf`, `rm -rf .terraform`, `terraform init`, and confirm with `terraform state list`. Keep `terraform.tfstate` **gitignored** — never commit it.
+
+#### Warnings
+
+- Do not apply from both TFC and local against the same resources without coordinating state (drift / conflicts).
+- To re-enable TFC: uncomment `cloud {}`, remove local `.terraform` (and local state if migrating back), then `terraform init`. Only `state push` / migrate if you know what you are doing.
+- Never commit credentials, `terraform.tfvars` with secrets, or state files.
+
+Requires Terraform ≥ 1.5 (HCP Terraform `cloud {}` block; not the old `backend "remote"` syntax).
+
 ## Scripts
 
 - package script:dev -> wrangler-dev
