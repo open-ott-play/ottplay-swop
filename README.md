@@ -195,9 +195,12 @@ Durable Cloudflare resources (Workers KV namespace) are managed with Terraform C
 - **Execution mode:** Remote
 - **VCS:** optional — connect this GitHub repo in the TFC UI via the org OAuth app when available; until then use CLI-driven remote runs (same pattern as sibling workspaces)
 - **VCS trigger patterns** (when connected): `terraform/**/*`
-- **Workspace variables** (set in TFC, never in git):
-  - `cloudflare_api_token` (sensitive) — Workers Scripts Edit + Workers KV Storage Edit/Read
-  - `cloudflare_account_id` — Cloudflare account ID
+- **Credentials** (same names as `~/1/1/home/cloudflare/rules_lists`; never commit):
+  - `account_xyz` — Cloudflare Account ID
+  - `email_xyz` — Cloudflare login email
+  - `key_xyz` (sensitive) — Cloudflare Global API Key
+  - Local CLI: export `TF_VAR_account_xyz` / `TF_VAR_email_xyz` / `TF_VAR_key_xyz` (e.g. from bashrc) so `terraform` picks them up automatically
+  - TFC remote runs: set the same three names as workspace variables (`key_xyz` sensitive); bashrc `TF_VAR_*` does not apply inside TFC
 
 ```bash
 cd terraform
