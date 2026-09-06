@@ -68,9 +68,10 @@ Durable Cloudflare resources (Workers KV namespace) are managed with Terraform C
   - `cloudflare_account_id` — Cloudflare account ID
 
 ```bash
-terraform -chdir=terraform init
-terraform -chdir=terraform plan
-terraform -chdir=terraform apply
+cd terraform
+terraform init
+terraform plan
+terraform apply
 ```
 
 After apply:
@@ -88,4 +89,4 @@ Worker script upload stays with wrangler/CI (TypeScript must be bundled); Terraf
 - package script:deploy -> wrangler-deploy
 - package script:tail -> wrangler-tail
 - package script:cf-typegen -> wrangler-types
-- `scripts/render-wrangler.sh` — fill `wrangler.toml` from `terraform output -raw kv_namespace_id`
+- `scripts/render-wrangler.sh` — fill `wrangler.toml` from `terraform output -raw kv_namespace_id` (run after `cd terraform` apply, or from repo root if the script cds itself)
