@@ -57,7 +57,7 @@ Note: no CF credentials in terraform; keep them outside .tf and state.
 
 Durable Cloudflare resources (Workers KV namespace) are managed with Terraform Cloud.
 
-- **Organization:** `victron-venus`
+- **Organization:** `open-ott-play`
 - **Workspace:** `ottplay-swop` — create in the TFC UI if it does not exist yet
 - **Working directory:** `terraform`
 - **Execution mode:** Remote

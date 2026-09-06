@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.15.7"
   cloud {
-    organization = "victron-venus"
+    organization = "open-ott-play"
     workspaces { name = "ottplay-swop" }
   }
   required_providers {
