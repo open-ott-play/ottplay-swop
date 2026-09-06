@@ -111,7 +111,7 @@ Note: no CF credentials in terraform; keep them outside .tf and state.
 
 Durable Cloudflare resources (Workers KV namespace) are managed with Terraform Cloud.
 
-- **Organization:** `victron-venus`
+- **Organization:** `open-ott-play`
 - **Workspace:** `ottplay-swop` — create in the TFC UI if it does not exist yet
 - **Working directory:** `terraform`
 - **Execution mode:** Remote
@@ -122,9 +122,10 @@ Durable Cloudflare resources (Workers KV namespace) are managed with Terraform C
   - `cloudflare_account_id` — Cloudflare account ID
 
 ```bash
-terraform -chdir=terraform init
-terraform -chdir=terraform plan
-terraform -chdir=terraform apply
+cd terraform
+terraform init
+terraform plan
+terraform apply
 ```
 
 After apply:
@@ -142,4 +143,4 @@ Worker script upload stays with wrangler/CI (TypeScript must be bundled); Terraf
 - package script:deploy -> wrangler-deploy
 - package script:tail -> wrangler-tail
 - package script:cf-typegen -> wrangler-types
-- `scripts/render-wrangler.sh` — fill `wrangler.toml` from `terraform output -raw kv_namespace_id`
+- `scripts/render-wrangler.sh` — fill `wrangler.toml` from terraform outputs (safe to run from repo root)
