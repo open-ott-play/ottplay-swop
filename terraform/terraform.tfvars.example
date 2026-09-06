@@ -1,6 +1,9 @@
 # For TFC remote runs set workspace variables: account, email, key (key = sensitive).
+# Optional: public_base_url, session_ttl_seconds, admin_token (sensitive), worker_name, kv_title.
 # Local overrides (gitignored): copy to terraform.tfvars or pass -var / TF_VAR_account etc.
 account = "YOUR_CLOUDFLARE_ACCOUNT_ID"
 email   = "you@example.com"
 key     = "YOUR_GLOBAL_API_KEY"
-# public_base_url = "https://ottplay-swop.<subdomain>.workers.dev"
+# public_base_url = "https://swop.2560801.xyz"
+# session_ttl_seconds = 600
+# admin_token = ""  # leave empty to keep existing Wrangler secret; set in TFC if managing via TF

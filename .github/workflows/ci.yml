@@ -80,6 +80,12 @@ jobs:
         with:
           terraform_wrapper: false
 
+      - name: Placeholder worker artifact for validate
+        run: |
+          mkdir -p terraform/build
+          printf '%s
+' '// ci placeholder for filesha256/content_file' > terraform/build/worker.js
+
       - name: Terraform fmt
         working-directory: terraform
         run: terraform fmt -check

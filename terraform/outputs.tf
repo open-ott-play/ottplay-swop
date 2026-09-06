@@ -1,23 +1,29 @@
 output "kv_namespace_id" {
-  description = "Workers KV namespace ID to put in wrangler.toml [[kv_namespaces]].id"
+  description = "Workers KV namespace ID (SWOP binding)."
   value       = cloudflare_workers_kv_namespace.swop.id
 }
 
 output "worker_name" {
-  description = "Logical Worker name (wrangler name / deploy target)"
-  value       = var.worker_name
+  description = "Cloudflare Worker script name managed by Terraform."
+  value       = cloudflare_workers_script.swop.script_name
 }
 
-output "wrangler_toml_hint" {
-  description = "How to fill wrangler.toml from Terraform outputs (not a secret file)"
+output "worker_script_id" {
+  description = "Cloudflare Worker script id (same as script_name)."
+  value       = cloudflare_workers_script.swop.id
+}
+
+output "deploy_hint" {
+  description = "How to deploy: build artifact, then terraform apply (not wrangler deploy for production)."
   value       = <<-EOT
-    # After terraform apply, copy into local wrangler.toml (from wrangler.toml.example):
-    # name = "${var.worker_name}"
-    # [[kv_namespaces]]
-    # binding = "SWOP"
-    # id = "${cloudflare_workers_kv_namespace.swop.id}"
-    # [vars]
-    # PUBLIC_BASE_URL = "<set after first wrangler deploy, or var.public_base_url if set>"
-    # SESSION_TTL_SECONDS = "${var.session_ttl_seconds}"
+    # From repo root, before plan/apply:
+    #   ./scripts/build-worker-for-terraform.sh
+    # Then:
+    #   cd terraform && terraform plan && terraform apply
+    # Worker: ${cloudflare_workers_script.swop.script_name}
+    # KV:     ${cloudflare_workers_kv_namespace.swop.id}
+    # PUBLIC_BASE_URL / SESSION_TTL_SECONDS come from Terraform variables.
+    # ADMIN_TOKEN: set TFC sensitive var admin_token, or leave unset to preserve the existing Wrangler secret.
+    # Custom hostname swop.2560801.xyz remains outside Terraform for now.
   EOT
 }
