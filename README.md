@@ -7,19 +7,25 @@ Cloudflare Worker for one-time session handoff: desktop creates a short code, mo
 ```mermaid
 sequenceDiagram
   autonumber
+  actor Admin as Operator
   actor TV as TV / desktop<br/>(ottplay-foss)
   participant W as Worker + KV
   actor Phone as Phone browser
 
-  TV->>W: POST /session<br/>(optional caption, draft)
+  Note over Admin,W: Optional once: allowlist client id
+  Admin->>W: POST /admin/clients<br/>(Bearer ADMIN_TOKEN)
+  W-->>Admin: 201 allowed
+
+  TV->>W: POST /session<br/>X-Swop-Client-Id + caption/draft
+  Note over W: Fail closed if id missing / not allowlisted
   W-->>TV: code, url, expiresIn
   Note over TV: Show QR / link / code
   Phone->>W: GET /?c=CODE
-  W-->>Phone: HTML form
+  W-->>Phone: HTML form (no client id)
   Phone->>W: POST /submit<br/>(code, value)
   W-->>Phone: ok
   loop Poll until ready / gone / TTL
-    TV->>W: GET /val?c=CODE
+    TV->>W: GET /val?c=CODE<br/>X-Swop-Client-Id
     alt waiting
       W-->>TV: status waiting
     else ready (burn-after-read)
@@ -27,21 +33,69 @@ sequenceDiagram
       Note over W: Session deleted from KV
     else missing / burned / expired
       W-->>TV: status gone
+    else client mismatch
+      W-->>TV: 403 client mismatch
     end
   end
 ```
 
 ## API
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | /session | Create session; optional caption and draft; returns code, url, expiresIn |
-| GET | /?c=CODE | Mobile HTML form for the session |
-| POST | /submit | Submit value (code, value); sets status ready |
-| GET | /val?c=CODE | Poll waiting/ready/gone; burn-after-read on ready |
-| GET | /health | ok true |
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | /session | allowlisted `X-Swop-Client-Id` | Create session; stores clientId; returns code, url, expiresIn |
+| GET | /?c=CODE | none | Mobile HTML form for the session |
+| POST | /submit | none | Submit value (code, value); sets status ready |
+| GET | /val?c=CODE | allowlisted client id; must match session | Poll waiting/ready/gone; burn-after-read on ready |
+| GET | /health | none | ok true |
+| POST | /admin/clients | Bearer `ADMIN_TOKEN` | Allowlist a client id |
+| DELETE | /admin/clients?id=… | Bearer `ADMIN_TOKEN` | Remove allowlist entry |
+| GET | /admin/clients | Bearer `ADMIN_TOKEN` | List allowlisted client ids |
 
-CORS enabled for GET, POST, OPTIONS.
+CORS enabled for GET, POST, DELETE, OPTIONS.
+
+## Access control
+
+Anyone can download a FOSS ottplay binary that points `swopBaseUrl` at your Worker. A shared secret in the repo would not help: every downloader would have it. Random “Vasya Pupkin” installs must not be able to create sessions or poll `/val` and burn Cloudflare KV.
+
+**Allowlist:** only TVs/desktops whose stable client id is stored in KV under `allow:{clientId}` can call protected routes. Phone browsers that open the QR session URL do **not** send a client id and do not need one (`GET /?c=`, `POST /submit`).
+
+**Protected:** `POST /session`, `GET /val`  
+**Unprotected (by design):** `GET /?c=`, `POST /submit`, `GET /health`, `OPTIONS`  
+**Admin:** `/admin/clients*` — Bearer `ADMIN_TOKEN` (Wrangler secret). If `ADMIN_TOKEN` is unset, admin routes return 503 and client routes still fail closed (nobody is allowlisted until you configure the token and add ids).
+
+Header: `X-Swop-Client-Id: <stable-id>` (alias `X-Ottplay-Client-Id`). Id rules: trim, length 8–128, charset `[A-Za-z0-9._:-]`.
+
+Errors: missing/invalid id → `401 {"error":"missing client id"}`; not allowlisted → `403 {"error":"client not allowed"}`; `/val` with a different id than the session → `403 {"error":"client mismatch"}`.
+
+### Configure admin token
+
+```bash
+wrangler secret put ADMIN_TOKEN
+```
+
+Do not put `ADMIN_TOKEN` in `[vars]` or commit it.
+
+### Authorize a player
+
+1. Get the device id from the player About screen / localStorage `deviceId` (or a future settings UI).
+2. Allowlist it:
+
+```bash
+curl -X POST "$BASE/admin/clients" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"clientId":"...","note":"living-room"}'
+```
+
+List / revoke:
+
+```bash
+curl -H "Authorization: Bearer $ADMIN_TOKEN" "$BASE/admin/clients"
+curl -X DELETE -H "Authorization: Bearer $ADMIN_TOKEN" "$BASE/admin/clients?id=..."
+```
+
+**Future ottplay-foss:** send `X-Swop-Client-Id` on `/session` and `/val` (not implemented in this Worker PR).
 
 ## Setup
 
