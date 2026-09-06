@@ -56,46 +56,124 @@ CORS enabled for GET, POST, DELETE, OPTIONS.
 
 ## Access control
 
-Anyone can download a FOSS ottplay binary that points `swopBaseUrl` at your Worker. A shared secret in the repo would not help: every downloader would have it. Random “Vasya Pupkin” installs must not be able to create sessions or poll `/val` and burn Cloudflare KV.
+Operator guide for keeping Cloudflare KV (and Worker invocations) limited to
+**your** installs. Random FOSS downloads that point `swopBaseUrl` at your Worker
+must not be able to create sessions or poll `/val`.
 
-**Allowlist:** only TVs/desktops whose stable client id is stored in KV under `allow:{clientId}` can call protected routes. Phone browsers that open the QR session URL do **not** send a client id and do not need one (`GET /?c=`, `POST /submit`).
+### Why
 
-**Protected:** `POST /session`, `GET /val`  
-**Unprotected (by design):** `GET /?c=`, `POST /submit`, `GET /health`, `OPTIONS`  
-**Admin:** `/admin/clients*` — Bearer `ADMIN_TOKEN` (Wrangler secret). If `ADMIN_TOKEN` is unset, admin routes return 503 and client routes still fail closed (nobody is allowlisted until you configure the token and add ids).
+Anyone can download a FOSS ottplay binary and point it at our Worker. A shared
+secret in the repo would not help: every downloader would have it. "Vasya
+Pupkin" installs must not burn KV quota by creating sessions or polling `/val`.
 
-Header: `X-Swop-Client-Id: <stable-id>` (alias `X-Ottplay-Client-Id`). Id rules: trim, length 8–128, charset `[A-Za-z0-9._:-]`.
+The fix is an **allowlist**: only TVs/desktops whose stable client id is stored
+in KV under `allow:{clientId}` can call protected routes. Phone browsers that
+open the QR session URL do **not** send a client id and do not need one.
 
-Errors: missing/invalid id → `401 {"error":"missing client id"}`; not allowlisted → `403 {"error":"client not allowed"}`; `/val` with a different id than the session → `403 {"error":"client mismatch"}`.
+### Client id
 
-### Configure admin token
+Reuse the player **Device UUID** (`dev_…`):
 
-```bash
-wrangler secret put ADMIN_TOKEN
-```
+- Shown in **About** / **Settings → Remote control**
+- Stored in browser `localStorage` as `deviceId`
+- Example shape: `dev_a1b2c3d4e5`
 
-Do not put `ADMIN_TOKEN` in `[vars]` or commit it.
+**Rules:** trim whitespace; length **8–128**; charset `[A-Za-z0-9._:-]`.
 
-### Authorize a player
+**Headers** (either name works):
 
-1. Get the device id from the player About screen / localStorage `deviceId` (or a future settings UI).
-2. Allowlist it:
+- `X-Swop-Client-Id: <stable-id>`
+- `X-Ottplay-Client-Id: <stable-id>` (alias)
 
-```bash
-curl -X POST "$BASE/admin/clients" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"clientId":"...","note":"living-room"}'
-```
+### What is protected / not
 
-List / revoke:
+See the [API](#api) table above. Summary:
 
-```bash
-curl -H "Authorization: Bearer $ADMIN_TOKEN" "$BASE/admin/clients"
-curl -X DELETE -H "Authorization: Bearer $ADMIN_TOKEN" "$BASE/admin/clients?id=..."
-```
+| Kind | Routes |
+|------|--------|
+| **Protected** (allowlisted client id) | `POST /session`, `GET /val` |
+| **Unprotected** (by design) | `GET /?c=`, `POST /submit`, `GET /health`, `OPTIONS` |
+| **Admin** (Bearer ADMIN_TOKEN) | `/admin/clients*` |
 
-**Future ottplay-foss:** send `X-Swop-Client-Id` on `/session` and `/val` (not implemented in this Worker PR).
+If ADMIN_TOKEN is unset, admin routes return **503** and client routes still
+**fail closed** (nobody is allowlisted until you configure the token and add ids).
+
+**Errors:** missing/invalid id -> 401 missing client id; not allowlisted -> 403 client not allowed; /val mismatch -> 403 client mismatch.
+
+### Admin setup (exact steps)
+
+1. Set the admin secret (never put it in `[vars]` or commit it):
+
+   ```bash
+   wrangler secret put ADMIN_TOKEN
+   ```
+
+2. Deploy the Worker (npm run deploy / CI).
+
+3. Set your base URL (workers.dev or custom domain):
+
+   ```bash
+   BASE=https://ottplay-swop.<account>.workers.dev
+   ```
+
+4. Allowlist / list / revoke clients (optional note field for humans):
+
+   ```bash
+   # Allowlist
+   curl -X POST "$BASE/admin/clients" \
+     -H "Authorization: Bearer $ADMIN_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"clientId":"dev_a1b2c3d4e5","note":"living-room"}'
+
+   # List
+   curl -H "Authorization: Bearer $ADMIN_TOKEN" "$BASE/admin/clients"
+
+   # Revoke
+   curl -X DELETE -H "Authorization: Bearer $ADMIN_TOKEN" \
+     "$BASE/admin/clients?id=dev_a1b2c3d4e5"
+   ```
+
+### Manual authorize flow
+
+1. Open the player on the TV/desktop.
+2. Copy Device ID from About / Settings → Remote control (or localStorage.deviceId).
+3. Run the POST admin/clients example above with that id.
+4. Confirm the player sends X-Swop-Client-Id (or alias) on /session and /val, and swopBaseUrl points at your Worker.
+
+### Can `deploy.sh` auto-add clients?
+
+**Today:** `ottplay-foss/deploy.sh` only pulls/runs Docker. It does **not** know
+a browser `deviceId` — that id is created on first player load in
+`localStorage`, after the container is already up. So the current script cannot
+auto-allowlist.
+
+**Yes, we can extend it** for *our* operator installs (optional path, not
+default):
+
+| Piece | Notes |
+|-------|--------|
+| Env on deploy host | `SWOP_BASE_URL`, `SWOP_ADMIN_TOKEN` (secret on the host only — **never** in the image or git), optional `SWOP_CLIENT_ID` |
+| If `SWOP_CLIENT_ID` unset | Generate once (`dev_<hex>` UUID) and persist next to the container (host file / volume) |
+| After container is up | `curl -X POST "$SWOP_BASE_URL/admin/clients" -H "Authorization: Bearer $SWOP_ADMIN_TOKEN" …` |
+| Inject the same id | Future: docker env / settings bootstrap / server-injected config so the player sends that header |
+
+Until the foss client is wired to send the header and use `swopBaseUrl`,
+auto-allow alone is **not** enough.
+
+**Public Docker Hub image** must **not** ship `ADMIN_TOKEN` or a pre-allowlisted
+id.
+
+### Future foss work (checklist)
+
+- [ ] Generate/persist Device UUID (already exists as `deviceId`)
+- [ ] Setting `swopBaseUrl` (empty = remote text entry disabled)
+- [ ] ♥™ / remote VKB: `POST /session` + poll `GET /val` with
+      `X-Swop-Client-Id` (or alias)
+- [ ] Hide key / entry UI when base URL is empty
+- [ ] Link player docs to this repo's Access control section
+
+Client wiring lives in [ottplay-foss](https://github.com/open-ott-play/ottplay-foss);
+this Worker PR only ships the allowlist API.
 
 ## Setup
 
@@ -143,4 +221,4 @@ Worker script upload stays with wrangler/CI (TypeScript must be bundled); Terraf
 - package script:deploy -> wrangler-deploy
 - package script:tail -> wrangler-tail
 - package script:cf-typegen -> wrangler-types
-- `scripts/render-wrangler.sh` — fill `wrangler.toml` from terraform outputs (safe to run from repo root)
+- `scripts/render-wrangler.sh` — fill `wrangler.toml` from terraform outputs (run from **repo root**; script resolves paths relative to itself)
