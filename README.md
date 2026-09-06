@@ -179,7 +179,7 @@ this Worker PR only ships the allowlist API.
 
 1. Copy example wrangler config to wrangler.toml; fill placeholders.
 2. Install project dependencies.
-3. Run local dev or deploy via package scripts.
+3. Use package scripts for local development; production Worker updates go through Terraform (see Infrastructure).
 
 wrangler.toml is gitignored and must never be committed with real credentials.
 
@@ -187,36 +187,37 @@ Note: no CF credentials in terraform; keep them outside .tf and state.
 
 ## Infrastructure (Terraform Cloud)
 
-Durable Cloudflare resources (Workers KV namespace) are managed with Terraform Cloud.
+Durable Cloudflare resources — Workers KV namespace **and** the Worker script — are managed with Terraform Cloud.
 
 - **Organization:** `open-ott-play`
 - **Workspace:** `ottplay-swop` — create in the TFC UI if it does not exist yet
 - **Working directory:** `terraform`
-- **Execution mode:** Remote
+- **Execution mode:** Remote (CLI-driven runs upload local `terraform/`, including `terraform/build/worker.js`)
 - **VCS:** optional — connect this GitHub repo in the TFC UI via the org OAuth app when available; until then use CLI-driven remote runs (same pattern as sibling workspaces)
 - **VCS trigger patterns** (when connected): `terraform/**/*`
 - **Credentials** (never commit; Global API Key auth like personal CF terraform):
   - `account` — Cloudflare Account ID
   - `email` — Cloudflare login email
   - `key` (sensitive) — Cloudflare Global API Key
-  - TFC remote runs (this workspace is remote): set workspace variables `account` / `email` / `key` — local bashrc `TF_VAR_*` is **not** used by the TFC runner
+  - `public_base_url` — bound to the Worker as `PUBLIC_BASE_URL` (default `https://swop.2560801.xyz`)
+  - `session_ttl_seconds` — bound as `SESSION_TTL_SECONDS` (default `600`)
+  - `admin_token` (sensitive, optional) — when set, Terraform manages the `ADMIN_TOKEN` secret_text binding; when empty, `keep_bindings = ["secret_text"]` preserves the existing Wrangler secret
+  - TFC remote runs (this workspace is remote): set workspace variables above — local bashrc `TF_VAR_*` is **not** used by the TFC runner
   - Local overrides only if you switch execution to local or use `terraform.tfvars` / `-var`
 
-```bash
-cd terraform
-terraform init
-terraform plan
-terraform apply
-```
+### Build the Worker artifact (required before plan/apply)
 
-After apply:
+Terraform uploads `terraform/build/worker.js` via `cloudflare_workers_script`. Always rebuild the bundle into that path before plan/apply (see package script `build:terraform` and the matching helper in `scripts/`). The package `build` step produces `dist/index.js`, which must be copied to `terraform/build/worker.js` (gitignored; `terraform/build/.gitkeep` is kept).
 
-1. Copy `kv_namespace_id` into local `wrangler.toml` (from `wrangler.toml.example`), or run `scripts/render-wrangler.sh`.
-2. Deploy the Worker with wrangler/CI; then set `PUBLIC_BASE_URL` (or TFC/workspace `public_base_url`) to the workers.dev URL from the first deploy.
+Then from `terraform/`: `terraform init`, `terraform plan`, `terraform apply`.
 
-**Credentials never in git.** Root and `terraform/` gitignores exclude wrangler.toml, tfvars, `.env*`, `*.pem`/`*.key`, `credentials.json`, `credentials.tfrc.json`, and local Terraform state/plan files. Do not commit Cloudflare account IDs, API tokens, or KV IDs. The GitHub Terraform module (if any) is separate from this Cloudflare IaC.
+**What Terraform owns:** KV namespace (`cloudflare_workers_kv_namespace.swop`) and Worker script (`cloudflare_workers_script.swop`) with KV + plain_text bindings.
 
-Worker script upload stays with wrangler/CI (TypeScript must be bundled); Terraform owns the KV namespace id used in wrangler bindings.
+**Outside Terraform for now:** custom hostname / route for `swop.2560801.xyz` (already live). Do not remove it from the Cloudflare dashboard unless you are ready to manage it in TF with the correct zone id.
+
+**Wrangler still useful for:** local `dev` / `tail` and secret experiments. Prefer Terraform apply for production script updates.
+
+**Credentials never in git.** Root and `terraform/` gitignores exclude wrangler.toml, tfvars, `.env*`, credential material, `terraform/build/worker.js`, and local Terraform state/plan files.
 
 ### Running locally (disconnect from Terraform Cloud)
 
@@ -264,8 +265,10 @@ Requires Terraform ≥ 1.5 (HCP Terraform `cloud {}` block; not the old `backend
 
 ## Scripts
 
-- package script:dev -> wrangler-dev
-- package script:deploy -> wrangler-deploy
+- package script:dev -> wrangler-dev (local)
+- package script:deploy -> wrangler-deploy (prefer Terraform apply for production)
 - package script:tail -> wrangler-tail
 - package script:cf-typegen -> wrangler-types
-- `scripts/render-wrangler.sh` — fill `wrangler.toml` from terraform outputs (run from **repo root**; script resolves paths relative to itself)
+- package script:build:terraform -> helper that fills `terraform/build/worker.js`
+- `scripts/build-worker-for-terraform.sh` — required before `terraform plan`/`apply`
+- `scripts/render-wrangler.sh` — fill local `wrangler.toml` from terraform outputs for dev/tail (run from **repo root**)

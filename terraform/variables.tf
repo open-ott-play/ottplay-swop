@@ -17,7 +17,7 @@ variable "key" {
 variable "worker_name" {
   type        = string
   default     = "ottplay-swop"
-  description = "Logical Worker name (deployed via wrangler/CI, not uploaded by Terraform)."
+  description = "Cloudflare Worker script name managed by Terraform (cloudflare_workers_script)."
 }
 
 variable "kv_title" {
@@ -28,12 +28,19 @@ variable "kv_title" {
 
 variable "public_base_url" {
   type        = string
-  default     = ""
-  description = "Optional override for the workers.dev URL after first wrangler deploy. Set this after you know the deployed workers.dev hostname."
+  default     = "https://swop.2560801.xyz"
+  description = "Public base URL bound to the Worker as PUBLIC_BASE_URL (plain_text)."
 }
 
 variable "session_ttl_seconds" {
   type        = number
   default     = 600
-  description = "Session TTL in seconds (documented for wrangler [vars]; not applied by Terraform to the Worker)."
+  description = "Session TTL in seconds bound to the Worker as SESSION_TTL_SECONDS (plain_text)."
+}
+
+variable "admin_token" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "Optional ADMIN_TOKEN secret_text binding. Leave empty to keep the existing Wrangler secret via keep_bindings."
 }

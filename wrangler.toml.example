@@ -1,6 +1,6 @@
-# Copy to wrangler.toml (gitignored) and fill in real values locally.
-# Never commit wrangler.toml — it must never contain committed secrets
-# (account IDs, API tokens, or production KV namespace IDs with secrets).
+# Copy to wrangler.toml (gitignored) for local wrangler dev/tail.
+# Production Worker script deploy is owned by Terraform (see README Infrastructure).
+# Never commit wrangler.toml with real account/KV ids or secrets.
 
 name = "ottplay-swop"
 main = "src/index.ts"
@@ -13,10 +13,10 @@ binding = "SWOP"
 id = "YOUR_KV_NAMESPACE_ID"
 
 [vars]
-PUBLIC_BASE_URL = "https://example.workers.dev"
+PUBLIC_BASE_URL = "https://swop.2560801.xyz"
 SESSION_TTL_SECONDS = "600"
 
-# ADMIN_TOKEN is a Wrangler secret, NOT a [vars] entry:
+# ADMIN_TOKEN: for local/dev you may still use:
 #   wrangler secret put ADMIN_TOKEN
-# Never commit the token. Without it, /admin/* returns 503 and
-# TV routes fail closed (no clients can be allowlisted).
+# Production: set TFC sensitive var admin_token, or leave unset so Terraform
+# keep_bindings preserves the existing secret_text binding on updates.
