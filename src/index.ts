@@ -2,6 +2,7 @@ export interface Env {
   SWOP: KVNamespace;
   PUBLIC_BASE_URL: string;
   SESSION_TTL_SECONDS?: string;
+  ADMIN_TOKEN?: string; // secret via wrangler secret put
 }
 
 type SessionStatus = "waiting" | "ready";
@@ -12,16 +13,24 @@ interface SessionRecord {
   draft: string;
   value?: string;
   createdAt: number;
+  clientId?: string;
+}
+
+interface AllowRecord {
+  allowedAt: number;
+  note?: string;
 }
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0 O I l
 const CODE_LENGTH = 6;
 const DEFAULT_TTL = 600;
+const CLIENT_ID_RE = /^[A-Za-z0-9._:-]{8,128}$/;
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers":
+    "Content-Type, Authorization, X-Swop-Client-Id, X-Ottplay-Client-Id",
   "Access-Control-Max-Age": "86400",
 };
 
@@ -59,6 +68,10 @@ function sessKey(code: string): string {
   return `sess:${code.toUpperCase()}`;
 }
 
+function allowKey(clientId: string): string {
+  return `allow:${clientId}`;
+}
+
 function randomCode(): string {
   const bytes = new Uint8Array(CODE_LENGTH);
   crypto.getRandomValues(bytes);
@@ -88,6 +101,71 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
+
+function parseClientId(request: Request): string | null {
+  const raw =
+    request.headers.get("X-Swop-Client-Id") ??
+    request.headers.get("X-Ottplay-Client-Id") ??
+    "";
+  const id = raw.trim();
+  if (!CLIENT_ID_RE.test(id)) {
+    return null;
+  }
+  return id;
+}
+
+async function requireAllowlistedClient(
+  request: Request,
+  env: Env,
+): Promise<{ clientId: string } | Response> {
+  const clientId = parseClientId(request);
+  if (!clientId) {
+    return json({ error: "missing client id" }, 401);
+  }
+  const raw = await env.SWOP.get(allowKey(clientId));
+  if (!raw) {
+    return json({ error: "client not allowed" }, 403);
+  }
+  return { clientId };
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const ba = enc.encode(a);
+  const bb = enc.encode(b);
+  if (ba.length !== bb.length) {
+    // Still walk both buffers so length leaks are less useful.
+    let dig = 0;
+    const n = Math.max(ba.length, bb.length);
+    for (let i = 0; i < n; i++) {
+      dig |= (ba[i] ?? 0) ^ (bb[i] ?? 0);
+    }
+    return dig === 0 && ba.length === bb.length;
+  }
+  let diff = 0;
+  for (let i = 0; i < ba.length; i++) {
+    diff |= ba[i]! ^ bb[i]!;
+  }
+  return diff === 0;
+}
+
+function requireAdmin(request: Request, env: Env): Response | null {
+  const token = (env.ADMIN_TOKEN ?? "").trim();
+  if (!token) {
+    return json({ error: "admin not configured" }, 503);
+  }
+  const auth = request.headers.get("Authorization") ?? "";
+  const prefix = "Bearer ";
+  if (!auth.startsWith(prefix)) {
+    return json({ error: "unauthorized" }, 401);
+  }
+  const presented = auth.slice(prefix.length).trim();
+  if (!timingSafeEqual(presented, token)) {
+    return json({ error: "unauthorized" }, 401);
+  }
+  return null;
+}
+
 function formPage(code: string, caption: string, draft: string): string {
   const safeCaption = escapeHtml(caption || "Enter value");
   const safeDraft = escapeHtml(draft);
@@ -159,7 +237,11 @@ function formPage(code: string, caption: string, draft: string): string {
 </html>`;
 }
 
-async function handleSession(request: Request, env: Env): Promise<Response> {
+async function handleSession(
+  request: Request,
+  env: Env,
+  clientId: string,
+): Promise<Response> {
   let body: { caption?: string; draft?: string } = {};
   try {
     body = (await request.json()) as { caption?: string; draft?: string };
@@ -175,6 +257,7 @@ async function handleSession(request: Request, env: Env): Promise<Response> {
     caption,
     draft,
     createdAt: Date.now(),
+    clientId,
   };
   await env.SWOP.put(sessKey(code), JSON.stringify(record), {
     expirationTtl: ttl,
@@ -183,6 +266,7 @@ async function handleSession(request: Request, env: Env): Promise<Response> {
   const url = `${base}/?c=${encodeURIComponent(code)}`;
   return json({ code, url, expiresIn: ttl });
 }
+
 async function handleForm(url: URL, env: Env): Promise<Response> {
   const code = (url.searchParams.get("c") || "").trim().toUpperCase();
   if (!code) {
@@ -233,7 +317,11 @@ async function handleSubmit(request: Request, env: Env): Promise<Response> {
   return json({ ok: true, status: "ready" });
 }
 
-async function handleVal(url: URL, env: Env): Promise<Response> {
+async function handleVal(
+  url: URL,
+  env: Env,
+  clientId: string,
+): Promise<Response> {
   const code = (url.searchParams.get("c") || "").trim().toUpperCase();
   if (!code) {
     return json({ error: "missing c" }, 400);
@@ -244,12 +332,82 @@ async function handleVal(url: URL, env: Env): Promise<Response> {
     return json({ status: "gone" });
   }
   const record = JSON.parse(raw) as SessionRecord;
+  if (record.clientId !== clientId) {
+    return json({ error: "client mismatch" }, 403);
+  }
   if (record.status === "waiting") {
     return json({ status: "waiting" });
   }
   // burn-after-read
   await env.SWOP.delete(key);
   return json({ status: "ready", value: record.value ?? "" });
+}
+
+async function handleAdminCreateClient(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  let body: { clientId?: string; note?: string };
+  try {
+    body = (await request.json()) as { clientId?: string; note?: string };
+  } catch {
+    return json({ error: "Invalid JSON" }, 400);
+  }
+  const clientId =
+    typeof body.clientId === "string" ? body.clientId.trim() : "";
+  if (!CLIENT_ID_RE.test(clientId)) {
+    return json({ error: "invalid clientId" }, 400);
+  }
+  const note =
+    typeof body.note === "string" ? body.note.trim().slice(0, 200) : undefined;
+  const record: AllowRecord = {
+    allowedAt: Date.now(),
+    ...(note ? { note } : {}),
+  };
+  await env.SWOP.put(allowKey(clientId), JSON.stringify(record));
+  return json({ ok: true, clientId, ...record }, 201);
+}
+
+async function handleAdminDeleteClient(
+  url: URL,
+  env: Env,
+): Promise<Response> {
+  const id = (url.searchParams.get("id") || "").trim();
+  if (!CLIENT_ID_RE.test(id)) {
+    return json({ error: "invalid id" }, 400);
+  }
+  const key = allowKey(id);
+  const existing = await env.SWOP.get(key);
+  if (existing === null) {
+    return json({ error: "not found" }, 404);
+  }
+  await env.SWOP.delete(key);
+  return new Response(null, { status: 204, headers: CORS_HEADERS });
+}
+
+async function handleAdminListClients(env: Env): Promise<Response> {
+  const listed = await env.SWOP.list({ prefix: "allow:" });
+  const clients: Array<{ clientId: string; allowedAt?: number; note?: string }> =
+    [];
+  for (const key of listed.keys) {
+    const clientId = key.name.slice("allow:".length);
+    const raw = await env.SWOP.get(key.name);
+    if (!raw) {
+      clients.push({ clientId });
+      continue;
+    }
+    try {
+      const rec = JSON.parse(raw) as AllowRecord;
+      clients.push({
+        clientId,
+        allowedAt: rec.allowedAt,
+        ...(rec.note ? { note: rec.note } : {}),
+      });
+    } catch {
+      clients.push({ clientId });
+    }
+  }
+  return json({ clients });
 }
 
 export default {
@@ -265,14 +423,40 @@ export default {
       if (request.method === "GET" && path === "/health") {
         return json({ ok: true });
       }
+
+      if (path === "/admin/clients") {
+        const denied = requireAdmin(request, env);
+        if (denied) {
+          return denied;
+        }
+        if (request.method === "POST") {
+          return await handleAdminCreateClient(request, env);
+        }
+        if (request.method === "DELETE") {
+          return await handleAdminDeleteClient(url, env);
+        }
+        if (request.method === "GET") {
+          return await handleAdminListClients(env);
+        }
+        return json({ error: "method not allowed" }, 405);
+      }
+
       if (request.method === "POST" && path === "/session") {
-        return await handleSession(request, env);
+        const auth = await requireAllowlistedClient(request, env);
+        if (auth instanceof Response) {
+          return auth;
+        }
+        return await handleSession(request, env, auth.clientId);
       }
       if (request.method === "POST" && path === "/submit") {
         return await handleSubmit(request, env);
       }
       if (request.method === "GET" && path === "/val") {
-        return await handleVal(url, env);
+        const auth = await requireAllowlistedClient(request, env);
+        if (auth instanceof Response) {
+          return auth;
+        }
+        return await handleVal(url, env, auth.clientId);
       }
       if (request.method === "GET" && path === "/") {
         return await handleForm(url, env);
