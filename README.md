@@ -2,6 +2,35 @@
 
 Cloudflare Worker for one-time session handoff: desktop creates a short code, mobile fills a form, desktop polls and burns the value after read.
 
+## How it works
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor TV as TV / desktop<br/>(ottplay-foss)
+  participant W as Worker + KV
+  actor Phone as Phone browser
+
+  TV->>W: POST /session<br/>(optional caption, draft)
+  W-->>TV: code, url, expiresIn
+  Note over TV: Show QR / link / code
+  Phone->>W: GET /?c=CODE
+  W-->>Phone: HTML form
+  Phone->>W: POST /submit<br/>(code, value)
+  W-->>Phone: ok
+  loop Poll until ready / gone / TTL
+    TV->>W: GET /val?c=CODE
+    alt waiting
+      W-->>TV: status waiting
+    else ready (burn-after-read)
+      W-->>TV: status ready + value
+      Note over W: Session deleted from KV
+    else missing / burned / expired
+      W-->>TV: status gone
+    end
+  end
+```
+
 ## API
 
 | Method | Path | Description |
