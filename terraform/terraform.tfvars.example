@@ -1,9 +1,6 @@
-# Prefer exporting TF_VAR_* in the shell (same names as rules_lists):
-#   export TF_VAR_account_xyz=...
-#   export TF_VAR_email_xyz=...
-#   export TF_VAR_key_xyz=...
-# Or copy this file to terraform.tfvars (gitignored) for local-only overrides.
-account_xyz = "YOUR_CLOUDFLARE_ACCOUNT_ID"
-email_xyz   = "you@example.com"
-key_xyz     = "YOUR_GLOBAL_API_KEY"
+# For TFC remote runs set workspace variables: account, email, key (key = sensitive).
+# Local overrides (gitignored): copy to terraform.tfvars or pass -var / TF_VAR_account etc.
+account = "YOUR_CLOUDFLARE_ACCOUNT_ID"
+email   = "you@example.com"
+key     = "YOUR_GLOBAL_API_KEY"
 # public_base_url = "https://ottplay-swop.<subdomain>.workers.dev"

@@ -1,17 +1,17 @@
-variable "account_xyz" {
+variable "account" {
   type        = string
-  description = "Cloudflare Account ID. Prefer TF_VAR_account_xyz from the shell (same as ~/1/1/home/cloudflare/rules_lists) or a TFC workspace variable; do not commit real values."
+  description = "Cloudflare Account ID. Set via TFC workspace variable or local terraform.tfvars / -var; do not commit real values."
 }
 
-variable "email_xyz" {
+variable "email" {
   type        = string
-  description = "Cloudflare account email for Global API Key auth. Prefer TF_VAR_email_xyz."
+  description = "Cloudflare account email for Global API Key auth."
 }
 
-variable "key_xyz" {
+variable "key" {
   type        = string
   sensitive   = true
-  description = "Cloudflare Global API Key. Prefer TF_VAR_key_xyz. Do not commit."
+  description = "Cloudflare Global API Key. Prefer TFC workspace sensitive variable for remote runs. Do not commit."
 }
 
 variable "worker_name" {
