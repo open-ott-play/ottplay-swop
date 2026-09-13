@@ -8,6 +8,7 @@
   "local_checks": [
     "npm ci --ignore-scripts",
     "npm run typecheck",
+    "npm test",
     "bash scripts/release-build.sh \"$(node -p 'require(\"./package.json\").version')\" beta",
     "terraform -chdir=terraform fmt -check",
     "terraform -chdir=terraform init -backend=false",
@@ -16,10 +17,7 @@
   "notes": [
     "Worker bundle is packaged using example configuration; production account bindings and credentials are never embedded.",
     "Cloudflare deployment is explicit and must use the archived worker.js; promotion itself does not deploy.",
-    "No Worker unit tests are committed on main yet; the existing test feature branch must be merged before claiming unit-test coverage."
-  ],
-  "stable_blockers": [
-    "Worker unit tests are not yet merged into the default branch"
+    "Worker API unit tests are required by CI and local release checks before candidate packaging."
   ],
   "repository": "open-ott-play/ottplay-swop",
   "mode": "release",
