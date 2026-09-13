@@ -45,3 +45,7 @@ credentials.tfrc.json
 .release-plan.json
 .release-inputs.json
 release-assets/
+
+# Python release tooling cache
+__pycache__/
+*.py[cod]
