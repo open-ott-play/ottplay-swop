@@ -36,6 +36,9 @@ jobs:
       - name: TypeScript check
         run: npm run typecheck
 
+      - name: Worker API unit tests
+        run: npm test
+
   build:
     name: Build
     runs-on: ubuntu-latest

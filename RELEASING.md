@@ -6,7 +6,7 @@ This document defines the release policy for **open-ott-play/ottplay-swop**. The
 recovery steps. The [machine-readable policy](.release-policy.json) declares the
 actual validation workflows, version source and project-specific blockers.
 
-**RC/stable are currently blocked:** Worker unit tests are not yet merged into the default branch.
+**Release readiness:** channels are implemented; activation and every required gate must pass before publication.
 
 ## Development and versioning
 
@@ -121,8 +121,7 @@ does not substitute for acceptance of the selected RC.
 
 - Worker bundle is packaged using example configuration; production account bindings and credentials are never embedded.
 - Cloudflare deployment is explicit and must use the archived worker.js; promotion itself does not deploy.
-- No Worker unit tests are committed on main yet; the existing test feature branch must be merged before claiming unit-test coverage.
-- Worker unit tests are not yet merged into the default branch
+- Worker API unit tests are required by CI and local release checks before candidate packaging.
 
 Local checks run all commands in `local_checks`; missing toolchains, container
 runtimes or credentials are failures, not successful skips. They help reproduce

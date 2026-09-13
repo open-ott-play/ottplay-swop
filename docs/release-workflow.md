@@ -90,8 +90,7 @@ and PyPI publication use verified stable assets as a separate explicit operation
 
 - Worker bundle is packaged using example configuration; production account bindings and credentials are never embedded.
 - Cloudflare deployment is explicit and must use the archived worker.js; promotion itself does not deploy.
-- No Worker unit tests are committed on main yet; the existing test feature branch must be merged before claiming unit-test coverage.
-- **RC/stable blocked:** Worker unit tests are not yet merged into the default branch
+- Worker API unit tests are required by CI and local release checks before candidate packaging.
 
 For public repositories, merge and verify the workflows before enabling the
 additive Terraform **CI gate** ruleset. Where release/deployment workflows use
