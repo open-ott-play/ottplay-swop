@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_call: {}
   push:
     branches: [main]
   pull_request:
@@ -63,8 +64,16 @@ jobs:
       - name: Build bundle
         run: npm run build
 
+      - name: Store actual Worker for Terraform validation
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: worker-validation
+          path: dist/index.js
+          if-no-files-found: error
+
   terraform:
     name: Terraform
+    needs: build
     runs-on: ubuntu-latest
 
     steps:
@@ -80,10 +89,14 @@ jobs:
         with:
           terraform_wrapper: false
 
-      - name: Placeholder worker artifact for validate
-        run: |
-          mkdir -p terraform/build
-          echo '// ci placeholder for filesha256/content_file' > terraform/build/worker.js
+      - name: Download the validated Worker bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: worker-validation
+          path: terraform/build
+
+      - name: Stage actual Worker for Terraform
+        run: mv terraform/build/index.js terraform/build/worker.js
 
       - name: Terraform fmt
         working-directory: terraform

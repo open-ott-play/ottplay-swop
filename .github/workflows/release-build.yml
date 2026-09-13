@@ -1,0 +1,45 @@
+name: Build release assets
+'on':
+  workflow_call:
+    inputs:
+      version:
+        description: Committed base version, without a v prefix or channel suffix
+        required: true
+        type: string
+      channel:
+        description: nightly, beta or rc; stable promotes existing RC bytes
+        required: true
+        type: string
+permissions:
+  contents: read
+env:
+  RELEASE_VERSION: ${{ inputs.version }}
+  RELEASE_CHANNEL: ${{ inputs.channel }}
+defaults:
+  run:
+    shell: bash
+jobs:
+  worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - name: Harden runner
+      uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1
+      with:
+        egress-policy: audit
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - name: Verify committed release version
+      run: python3 scripts/check-release-version.py "$RELEASE_VERSION" "$RELEASE_CHANNEL"
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      with:
+        node-version: '22'
+        cache: npm
+    - run: npm ci --ignore-scripts
+    - run: bash scripts/release-build.sh "$RELEASE_VERSION" "$RELEASE_CHANNEL"
+    - name: Store release assets
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: release-assets-worker
+        path: release-output/ottplay-swop-worker.tar.gz
+        if-no-files-found: error
+        retention-days: 14
