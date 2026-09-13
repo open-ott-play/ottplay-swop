@@ -39,3 +39,4 @@ local.*.tfvars
 credentials.json
 credentials.tfrc.json
 .terraform.d/
+/release-output/
