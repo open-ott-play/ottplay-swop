@@ -41,3 +41,11 @@ credentials.json
 credentials.tfrc.json
 .terraform.d/
 /release-output/
+# Frozen release overlays and final build staging
+.release-plan.json
+.release-inputs.json
+release-assets/
+
+# Python release tooling cache
+__pycache__/
+*.py[cod]

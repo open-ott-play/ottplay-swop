@@ -10,6 +10,7 @@ CONFIG=$(mktemp "$PWD/.release-wrangler.XXXXXX.toml")
 trap 'rm -f "$CONFIG"' EXIT
 sed 's/YOUR_CLOUDFLARE_ACCOUNT_ID/00000000000000000000000000000000/g; s/YOUR_KV_NAMESPACE_ID/00000000000000000000000000000000/g' wrangler.toml.example > "$CONFIG"
 WRANGLER_SEND_METRICS=false WRANGLER_LOG_PATH="$PWD/release-output/wrangler.log" npx wrangler deploy --dry-run --config "$CONFIG" --outdir release-output/worker
+python3 scripts/write_web_build_metadata.py release-output/worker
 mkdir -p terraform/build
 cp release-output/worker/index.js terraform/build/worker.js
 tar -czf release-output/ottplay-swop-worker.tar.gz -C release-output/worker .

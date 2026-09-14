@@ -22,5 +22,33 @@
   "repository": "open-ott-play/ottplay-swop",
   "mode": "release",
   "default_branch": "main",
-  "visibility": "public"
+  "visibility": "public",
+  "versioning": {
+    "schema": 1,
+    "promotion": "promote-bytes",
+    "files": [
+      {
+        "path": "package.json",
+        "format": "json",
+        "value": "package",
+        "field": "version"
+      },
+      {
+        "path": "package-lock.json",
+        "format": "npm-lock",
+        "value": "package",
+        "package": "ottplay-swop"
+      }
+    ],
+    "artifacts": [
+      {
+        "path": "ottplay-swop-worker.tar.gz",
+        "format": "tar-json",
+        "value": "package",
+        "member": "build-info.json",
+        "field": "version"
+      }
+    ],
+    "toolkit_revision": "5671b9a05817576a8ae6bd69cacfb3202c60ad0a"
+  }
 }
