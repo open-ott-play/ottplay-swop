@@ -25,38 +25,38 @@ def ts_source(s, digest):
     lines.append("export const wire = {")
     for k, v in sorted(s["constants"].items()):
         lines.append("    " + k + ": " + json.dumps(v) + ",")
-    lines += ["};", "", "const deviceId = new RegExp(wire.deviceIdPattern);",
-              "const token = new RegExp(wire.tokenPattern);",
-              "const commandId = new RegExp(wire.clientCommandIdPattern);",
-              "const swopClientId = new RegExp(wire.swopClientIdPattern);", "",
+    lines += ["};", "", "const wireDeviceIdPattern = new RegExp(wire.deviceIdPattern);",
+              "const wireDeviceTokenPattern = new RegExp(wire.tokenPattern);",
+              "const wireCommandIdPattern = new RegExp(wire.clientCommandIdPattern);",
+              "const wireSwopClientIdPattern = new RegExp(wire.swopClientIdPattern);", "",
               "export function validDeviceId(value: string): boolean {",
-              "    return deviceId.test(value);", "}", "",
+              "    return wireDeviceIdPattern.test(value);", "}", "",
               "export function validDeviceToken(value: string): boolean {",
-              "    return token.test(value);", "}", "",
+              "    return wireDeviceTokenPattern.test(value);", "}", "",
               "export function validSwopClientId(value: string): boolean {",
-              "    return swopClientId.test(value);", "}", "",
+              "    return wireSwopClientIdPattern.test(value);", "}", "",
               "export function validCommandEnvelope(data: any): boolean {",
               "    if (!data || !Array.isArray(data.commands)) return false;",
               "    if (data.commands.length > wire.commandEnvelopeMax) return false;",
               "    for (var i = 0; i < data.commands.length; i++) {",
               "        var item = data.commands[i];",
               '        if (!item || typeof item !== "object") return false;',
-              '        if (typeof item.id !== "string" || !commandId.test(item.id))',
+              '        if (typeof item.id !== "string" || !wireCommandIdPattern.test(item.id))',
               "            return false;", "    }", "    return true;", "}", "",
-              "function finite(value: any): boolean {",
+              "function wireFinite(value: any): boolean {",
               '    return typeof value === "number" && isFinite(value);', "}", "",
-              "function integer(value: any, minimum: number): boolean {",
-              "    return finite(value) && Math.floor(value) === value && value >= minimum;",
+              "function wireInteger(value: any, minimum: number): boolean {",
+              "    return wireFinite(value) && Math.floor(value) === value && value >= minimum;",
               "}", "", "export function validPlayerCommand(cmd: any): boolean {",
               '    if (!(cmd && typeof cmd.command === "string")) return false;']
     for name, f in s["fields"].items():
         v="cmd."+name; p=f["player"]; kind=f["type"]
         if kind=="text": expr='typeof '+v+' !== "string"'
-        elif kind=="integer": expr='!integer('+v+', '+str(p['min'])+')'
+        elif kind=="integer": expr='!wireInteger('+v+', '+str(p['min'])+')'
         elif kind=="range":
-            expr='!Array.isArray('+v+') ||\n'+v+'.length !== 2 ||\n!integer('+v+'[0], '+str(p['min'])+') ||\n!integer('+v+'[1], '+str(p['min'])+') ||\n'+v+'[0] > '+v+'[1]'
+            expr='!Array.isArray('+v+') ||\n'+v+'.length !== 2 ||\n!wireInteger('+v+'[0], '+str(p['min'])+') ||\n!wireInteger('+v+'[1], '+str(p['min'])+') ||\n'+v+'[0] > '+v+'[1]'
         else:
-            expr='!finite('+v+')'
+            expr='!wireFinite('+v+')'
             if 'exclusiveMin' in p: expr+=' ||\n'+v+' <= '+str(p['exclusiveMin'])
             if 'max' in p: expr+=' ||\n'+v+' > '+str(p['max'])
         lines += ['    if ('+v+' !== undefined) {']

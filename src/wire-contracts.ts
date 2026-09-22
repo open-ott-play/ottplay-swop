@@ -54,21 +54,21 @@ export const wire = {
     tokenPattern: "^[A-Za-z0-9_-]{32,256}$",
 };
 
-const deviceId = new RegExp(wire.deviceIdPattern);
-const token = new RegExp(wire.tokenPattern);
-const commandId = new RegExp(wire.clientCommandIdPattern);
-const swopClientId = new RegExp(wire.swopClientIdPattern);
+const wireDeviceIdPattern = new RegExp(wire.deviceIdPattern);
+const wireDeviceTokenPattern = new RegExp(wire.tokenPattern);
+const wireCommandIdPattern = new RegExp(wire.clientCommandIdPattern);
+const wireSwopClientIdPattern = new RegExp(wire.swopClientIdPattern);
 
 export function validDeviceId(value: string): boolean {
-    return deviceId.test(value);
+    return wireDeviceIdPattern.test(value);
 }
 
 export function validDeviceToken(value: string): boolean {
-    return token.test(value);
+    return wireDeviceTokenPattern.test(value);
 }
 
 export function validSwopClientId(value: string): boolean {
-    return swopClientId.test(value);
+    return wireSwopClientIdPattern.test(value);
 }
 
 export function validCommandEnvelope(data: any): boolean {
@@ -77,48 +77,48 @@ export function validCommandEnvelope(data: any): boolean {
     for (var i = 0; i < data.commands.length; i++) {
         var item = data.commands[i];
         if (!item || typeof item !== "object") return false;
-        if (typeof item.id !== "string" || !commandId.test(item.id))
+        if (typeof item.id !== "string" || !wireCommandIdPattern.test(item.id))
             return false;
     }
     return true;
 }
 
-function finite(value: any): boolean {
+function wireFinite(value: any): boolean {
     return typeof value === "number" && isFinite(value);
 }
 
-function integer(value: any, minimum: number): boolean {
-    return finite(value) && Math.floor(value) === value && value >= minimum;
+function wireInteger(value: any, minimum: number): boolean {
+    return wireFinite(value) && Math.floor(value) === value && value >= minimum;
 }
 
 export function validPlayerCommand(cmd: any): boolean {
     if (!(cmd && typeof cmd.command === "string")) return false;
     if (cmd.popup_duration !== undefined) {
         if (
-            !finite(cmd.popup_duration) ||
+            !wireFinite(cmd.popup_duration) ||
             cmd.popup_duration <= 0 ||
             cmd.popup_duration > 3600
         )
             return false;
     }
     if (cmd.channel_number !== undefined) {
-        if (!integer(cmd.channel_number, 1)) return false;
+        if (!wireInteger(cmd.channel_number, 1)) return false;
     }
     if (cmd.provider !== undefined) {
-        if (!integer(cmd.provider, 0)) return false;
+        if (!wireInteger(cmd.provider, 0)) return false;
     }
     if (cmd.volume !== undefined) {
-        if (!finite(cmd.volume)) return false;
+        if (!wireFinite(cmd.volume)) return false;
     }
     if (cmd.volume_step !== undefined) {
-        if (!finite(cmd.volume_step)) return false;
+        if (!wireFinite(cmd.volume_step)) return false;
     }
     if (cmd.random_range !== undefined) {
         if (
             !Array.isArray(cmd.random_range) ||
             cmd.random_range.length !== 2 ||
-            !integer(cmd.random_range[0], 1) ||
-            !integer(cmd.random_range[1], 1) ||
+            !wireInteger(cmd.random_range[0], 1) ||
+            !wireInteger(cmd.random_range[1], 1) ||
             cmd.random_range[0] > cmd.random_range[1]
         )
             return false;
