@@ -1,3 +1,5 @@
+import { validSwopClientId, wire } from "./wire-contracts";
+
 export interface Env {
   SWOP: KVNamespace;
   PUBLIC_BASE_URL: string;
@@ -21,10 +23,6 @@ interface AllowRecord {
   note?: string;
 }
 
-const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0 O I l
-const CODE_LENGTH = 6;
-const DEFAULT_TTL = 600;
-const CLIENT_ID_RE = /^[A-Za-z0-9._:-]{8,128}$/;
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -60,8 +58,8 @@ function html(body: string, status = 200): Response {
 }
 
 function ttlSeconds(env: Env): number {
-  const n = Number(env.SESSION_TTL_SECONDS ?? DEFAULT_TTL);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_TTL;
+  const n = Number(env.SESSION_TTL_SECONDS ?? wire.swopDefaultTtl);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : wire.swopDefaultTtl;
 }
 
 function sessKey(code: string): string {
@@ -73,11 +71,11 @@ function allowKey(clientId: string): string {
 }
 
 function randomCode(): string {
-  const bytes = new Uint8Array(CODE_LENGTH);
+  const bytes = new Uint8Array(wire.swopCodeLength);
   crypto.getRandomValues(bytes);
   let out = "";
-  for (let i = 0; i < CODE_LENGTH; i++) {
-    out += CODE_ALPHABET[bytes[i]! % CODE_ALPHABET.length];
+  for (let i = 0; i < wire.swopCodeLength; i++) {
+    out += wire.swopCodeAlphabet[bytes[i]! % wire.swopCodeAlphabet.length];
   }
   return out;
 }
@@ -104,11 +102,11 @@ function escapeHtml(s: string): string {
 
 function parseClientId(request: Request): string | null {
   const raw =
-    request.headers.get("X-Swop-Client-Id") ??
-    request.headers.get("X-Ottplay-Client-Id") ??
+    request.headers.get(wire.swopClientHeader) ??
+    request.headers.get(wire.swopFallbackClientHeader) ??
     "";
   const id = raw.trim();
-  if (!CLIENT_ID_RE.test(id)) {
+  if (!validSwopClientId(id)) {
     return null;
   }
   return id;
@@ -215,7 +213,7 @@ function formPage(code: string, caption: string, draft: string): string {
       msg.hidden = true;
       try {
         const value = document.getElementById("value").value;
-        const res = await fetch("/submit", {
+        const res = await fetch(${JSON.stringify(wire.swopSubmitPath)}, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ code: ${JSON.stringify(code)}, value }),
@@ -248,8 +246,8 @@ async function handleSession(
   } catch {
     // empty body ok
   }
-  const caption = typeof body.caption === "string" ? body.caption.slice(0, 200) : "";
-  const draft = typeof body.draft === "string" ? body.draft.slice(0, 4000) : "";
+  const caption = typeof body.caption === "string" ? body.caption.slice(0, wire.swopCaptionLimit) : "";
+  const draft = typeof body.draft === "string" ? body.draft.slice(0, wire.swopDraftLimit) : "";
   const ttl = ttlSeconds(env);
   const code = await allocateCode(env);
   const record: SessionRecord = {
@@ -295,7 +293,7 @@ async function handleSubmit(request: Request, env: Env): Promise<Response> {
   if (!code || !value) {
     return json({ error: "code and value are required" }, 400);
   }
-  if (value.length > 8000) {
+  if (value.length > wire.swopValueLimit) {
     return json({ error: "value too long" }, 400);
   }
   const key = sessKey(code);
@@ -355,11 +353,11 @@ async function handleAdminCreateClient(
   }
   const clientId =
     typeof body.clientId === "string" ? body.clientId.trim() : "";
-  if (!CLIENT_ID_RE.test(clientId)) {
+  if (!validSwopClientId(clientId)) {
     return json({ error: "invalid clientId" }, 400);
   }
   const note =
-    typeof body.note === "string" ? body.note.trim().slice(0, 200) : undefined;
+    typeof body.note === "string" ? body.note.trim().slice(0, wire.swopNoteLimit) : undefined;
   const record: AllowRecord = {
     allowedAt: Date.now(),
     ...(note ? { note } : {}),
@@ -373,7 +371,7 @@ async function handleAdminDeleteClient(
   env: Env,
 ): Promise<Response> {
   const id = (url.searchParams.get("id") || "").trim();
-  if (!CLIENT_ID_RE.test(id)) {
+  if (!validSwopClientId(id)) {
     return json({ error: "invalid id" }, 400);
   }
   const key = allowKey(id);
@@ -441,17 +439,17 @@ export default {
         return json({ error: "method not allowed" }, 405);
       }
 
-      if (request.method === "POST" && path === "/session") {
+      if (request.method === "POST" && path === wire.swopSessionPath) {
         const auth = await requireAllowlistedClient(request, env);
         if (auth instanceof Response) {
           return auth;
         }
         return await handleSession(request, env, auth.clientId);
       }
-      if (request.method === "POST" && path === "/submit") {
+      if (request.method === "POST" && path === wire.swopSubmitPath) {
         return await handleSubmit(request, env);
       }
-      if (request.method === "GET" && path === "/val") {
+      if (request.method === "GET" && path === wire.swopValuePath) {
         const auth = await requireAllowlistedClient(request, env);
         if (auth instanceof Response) {
           return auth;
