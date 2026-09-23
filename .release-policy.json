@@ -50,7 +50,14 @@
         "field": "version"
       }
     ],
-    "toolkit_revision": "ba7c4ece1188974df04799158e35603e968a4bac"
+    "toolkit_revision": "dc291e8c6635d8a0c5d2cc33a4ffd83d1956625b"
   },
-  "single_entry_ci": true
+  "single_entry_ci": true,
+  "change_scope": {
+    "documentation_paths": [],
+    "required_paths": [],
+    "always_validate_workflows": [
+      "codeql.yml"
+    ]
+  }
 }
