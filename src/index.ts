@@ -387,22 +387,30 @@ async function handleAdminListClients(env: Env): Promise<Response> {
   const listed = await env.SWOP.list({ prefix: "allow:" });
   const clients: Array<{ clientId: string; allowedAt?: number; note?: string }> =
     [];
-  for (const key of listed.keys) {
-    const clientId = key.name.slice("allow:".length);
-    const raw = await env.SWOP.get(key.name);
-    if (!raw) {
-      clients.push({ clientId });
-      continue;
-    }
-    try {
-      const rec = JSON.parse(raw) as AllowRecord;
-      clients.push({
-        clientId,
-        allowedAt: rec.allowedAt,
-        ...(rec.note ? { note: rec.note } : {}),
-      });
-    } catch {
-      clients.push({ clientId });
+  const readConcurrency = 4;
+  for (let offset = 0; offset < listed.keys.length; offset += readConcurrency) {
+    const keys = listed.keys.slice(offset, offset + readConcurrency);
+    const records = await Promise.allSettled(keys.map(async (key) => env.SWOP.get(key.name)));
+    // Consume settled reads in list order, including which error is reported.
+    for (let index = 0; index < keys.length; index++) {
+      const result = records[index]!;
+      if (result.status === "rejected") throw result.reason;
+      const clientId = keys[index]!.name.slice("allow:".length);
+      const raw = result.value;
+      if (!raw) {
+        clients.push({ clientId });
+        continue;
+      }
+      try {
+        const rec = JSON.parse(raw) as AllowRecord;
+        clients.push({
+          clientId,
+          allowedAt: rec.allowedAt,
+          ...(rec.note ? { note: rec.note } : {}),
+        });
+      } catch {
+        clients.push({ clientId });
+      }
     }
   }
   return json({ clients });
