@@ -412,6 +412,94 @@ describe("Swop Worker", () => {
       expect(body.clientId).toBe("new-client");
     });
 
+    it("overlaps a bounded number of metadata reads and keeps list order", async () => {
+      vi.useFakeTimers();
+      try {
+        const env = makeEnv();
+        const kv = env.SWOP as MockKV;
+        const keys = Array.from({ length: 11 }, (_, index) => ({ name: `allow:client-${index}` }));
+        kv.list.mockResolvedValue({ keys, list_complete: false, cursor: "next-page" });
+        let active = 0;
+        let maximum = 0;
+        const completed: number[] = [];
+        kv.get.mockImplementation(async (key: string) => {
+          const index = Number(key.slice("allow:client-".length));
+          maximum = Math.max(maximum, ++active);
+          await new Promise((resolve) => setTimeout(resolve, 4 - (index % 4)));
+          active--;
+          completed.push(index);
+          if (index === 2) return null;
+          if (index === 5) return "invalid JSON";
+          if (index === 8) return "null";
+          return JSON.stringify({ allowedAt: index, note: `note-${index}` });
+        });
+        const pending = fetch(
+          req("GET", "/admin/clients", { Authorization: "Bearer secret-token" }), env
+        );
+        await vi.runAllTimersAsync();
+        const res = await pending;
+        expect(res.status).toBe(200);
+        expect(maximum).toBeGreaterThan(1);
+        expect(maximum).toBeLessThanOrEqual(4);
+        expect(active).toBe(0);
+        expect(kv.get).toHaveBeenCalledTimes(keys.length);
+        expect(completed).not.toEqual(keys.map((_, index) => index));
+        expect(await res.json()).toEqual({
+          clients: keys.map((_, index) => ({
+            clientId: `client-${index}`,
+            ...([2, 5, 8].includes(index) ? {} : { allowedAt: index, note: `note-${index}` }),
+          })),
+        });
+        expect(kv.list).toHaveBeenCalledExactlyOnceWith({ prefix: "allow:" });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("reports the first listed read failure and does not start another batch", async () => {
+      vi.useFakeTimers();
+      try {
+        const env = makeEnv();
+        const kv = env.SWOP as MockKV;
+        kv.list.mockResolvedValue({
+          keys: Array.from({ length: 12 }, (_, index) => ({ name: `allow:client-${index}` })),
+        });
+        let active = 0;
+        kv.get.mockImplementation((key: string) => {
+          const index = Number(key.slice("allow:client-".length));
+          if (index === 2) throw new Error("later listed failure");
+          active++;
+          return new Promise((resolve) => setTimeout(resolve, index === 0 ? 30 : 1)).then(() => {
+            active--;
+            if (index === 0) throw new Error("first listed failure");
+            return JSON.stringify({ allowedAt: index });
+          });
+        });
+        const pending = fetch(
+          req("GET", "/admin/clients", { Authorization: "Bearer secret-token" }), env
+        );
+        await vi.runAllTimersAsync();
+        const res = await pending;
+        expect(res.status).toBe(500);
+        expect(await res.json()).toEqual({ error: "first listed failure" });
+        expect(kv.get).toHaveBeenCalledTimes(4);
+        expect(active).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("returns an empty list without reading metadata", async () => {
+      const env = makeEnv();
+      const kv = env.SWOP as MockKV;
+      kv.list.mockResolvedValue({ keys: [] });
+      const res = await fetch(
+        req("GET", "/admin/clients", { Authorization: "Bearer secret-token" }), env
+      );
+      expect(await res.json()).toEqual({ clients: [] });
+      expect(kv.get).not.toHaveBeenCalled();
+    });
+
     it("delete client", async () => {
       const env = makeEnv();
       const kv = env.SWOP as MockKV;
