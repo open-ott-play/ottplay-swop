@@ -146,40 +146,9 @@ If ADMIN_TOKEN is unset, admin routes return **503** and client routes still
 3. Run the POST admin/clients example above with that id.
 4. Confirm the player sends X-Swop-Client-Id (or alias) on /session and /val, and swopBaseUrl points at your Worker.
 
-### Can `deploy.sh` auto-add clients?
-
-**Today:** `ottplay-foss/deploy.sh` only pulls/runs Docker. It does **not** know
-a browser `deviceId` — that id is created on first player load in
-`localStorage`, after the container is already up. So the current script cannot
-auto-allowlist.
-
-**Yes, we can extend it** for *our* operator installs (optional path, not
-default):
-
-| Piece | Notes |
-|-------|--------|
-| Env on deploy host | `SWOP_BASE_URL`, `SWOP_ADMIN_TOKEN` (secret on the host only — **never** in the image or git), optional `SWOP_CLIENT_ID` |
-| If `SWOP_CLIENT_ID` unset | Generate once (`dev_<hex>` UUID) and persist next to the container (host file / volume) |
-| After container is up | `curl -X POST "$SWOP_BASE_URL/admin/clients" -H "Authorization: Bearer $SWOP_ADMIN_TOKEN" …` |
-| Inject the same id | Future: docker env / settings bootstrap / server-injected config so the player sends that header |
-
-Until the foss client is wired to send the header and use `swopBaseUrl`,
-auto-allow alone is **not** enough.
-
-**Public Docker Hub image** must **not** ship `ADMIN_TOKEN` or a pre-allowlisted
-id.
-
-### Future foss work (checklist)
-
-- [ ] Generate/persist Device UUID (already exists as `deviceId`)
-- [ ] Setting `swopBaseUrl` (empty = remote text entry disabled)
-- [ ] ♥™ / remote VKB: `POST /session` + poll `GET /val` with
-      `X-Swop-Client-Id` (or alias)
-- [ ] Hide key / entry UI when base URL is empty
-- [ ] Link player docs to this repo's Access control section
-
-Client wiring lives in [ottplay-foss](https://github.com/open-ott-play/ottplay-foss);
-this Worker PR only ships the allowlist API.
+Client configuration lives in [ottplay-foss](https://github.com/open-ott-play/ottplay-foss).
+Keep `ADMIN_TOKEN` on the operator's host; public images must not contain it or a
+pre-allowlisted device ID.
 
 ## Setup
 
