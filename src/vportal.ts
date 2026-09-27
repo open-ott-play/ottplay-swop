@@ -28,13 +28,26 @@ function error(status: number, message: string, extra: Record<string, string> = 
   });
 }
 
+type RelayFailureCode = "upstream_http" | "transport" | "response_limit" | "invalid_json" | "timeout";
+
+function relayFailure(code: RelayFailureCode, upstreamStatus?: number): Response {
+  return new Response(JSON.stringify({
+    error: code === "timeout" ? "VPortal request timed out" : "VPortal request failed",
+    code,
+    ...(upstreamStatus === undefined ? {} : { upstreamStatus }),
+  }), { status: code === "timeout" ? 504 : 502, headers: RESPONSE_HEADERS });
+}
+
 function canonicalEndpoint(value: unknown): value is string {
   if (typeof value !== "string" || value.length > 4096 || /[^\x21-\x7e]|[%\\]/.test(value)) return false;
   try {
     const url = new URL(value);
+    const labels = url.hostname.split(".");
+    const validHostname = url.hostname.length <= 253 && labels.length >= 2 && labels.every(label =>
+      label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label));
     return ["https:", "http:"].includes(url.protocol) && url.href === value &&
       !url.username && !url.password && !url.hash && !url.search && !url.port &&
-      /^[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?)+$/.test(url.hostname) &&
+      validHostname &&
       !/^\d+(?:\.\d+){3}$/.test(url.hostname) &&
       !/\.(?:localhost|local|internal)$/.test(url.hostname);
   } catch { return false; }
@@ -97,7 +110,9 @@ async function relay(url: string, params: string): Promise<Response> {
   try {
     return await Promise.race([deadline, (async () => {
       const upstream = await fetch(url, {
-        method: "POST", body: params, redirect: "error", signal: controller.signal,
+        // workerd supports "manual", not the browser's "error" mode. Reject
+        // every returned 3xx below, before any second request can expose a key.
+        method: "POST", body: params, redirect: "manual", signal: controller.signal,
         headers: {
           "Content-Type": "application/json", "Accept": "application/json",
           "Cache-Control": "no-store", "User-Agent": "OTT-play-FOSS/1.0",
@@ -106,15 +121,18 @@ async function relay(url: string, params: string): Promise<Response> {
       // Never forward redirects or upstream error bodies that might echo a key.
       if (!upstream.ok || upstream.status === 204) {
         void upstream.body?.cancel().catch(() => {});
-        return error(502, "VPortal request failed");
+        return relayFailure("upstream_http", upstream.status);
       }
       const bytes = await boundedBody(upstream, VPORTAL_LIMITS.response, controller.signal);
-      const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
-      JSON.parse(text); // Legacy PHP endpoints may label valid JSON as text/html.
+      let text: string;
+      try {
+        text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
+        JSON.parse(text); // Legacy PHP endpoints may label valid JSON as text/html.
+      } catch { return relayFailure("invalid_json"); }
       return new Response(text, { status: upstream.status, headers: RESPONSE_HEADERS });
     })()]);
-  } catch {
-    return timedOut ? error(504, "VPortal request timed out") : error(502, "VPortal request failed");
+  } catch (reason) {
+    return relayFailure(timedOut ? "timeout" : reason instanceof ByteLimitError ? "response_limit" : "transport");
   } finally {
     if (timer !== undefined) clearTimeout(timer);
     controller.abort();

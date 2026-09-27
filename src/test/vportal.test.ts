@@ -64,7 +64,7 @@ describe("installation-only VPortal relay", () => {
     expect(upstream).toHaveBeenCalledOnce();
     const [url, init] = upstream.mock.calls[0];
     expect(url).toBe(ENDPOINT);
-    expect(init).toMatchObject({ method: "POST", redirect: "error", body: JSON.stringify(params) });
+    expect(init).toMatchObject({ method: "POST", redirect: "manual", body: JSON.stringify(params) });
     expect(init.headers).toEqual({
       "Content-Type": "application/json", Accept: "application/json", "Cache-Control": "no-store",
       "User-Agent": "OTT-play-FOSS/1.0",
@@ -145,6 +145,21 @@ describe("installation-only VPortal relay", () => {
     expect(upstream).not.toHaveBeenCalled();
   });
 
+  it("bounds DNS labels and rejects pathological hostnames before any upstream request", async () => {
+    for (const hostname of [
+      "a".repeat(4000) + ".example", "a".repeat(63) + "-".repeat(3000) + ".example",
+      "a".repeat(64) + ".example", Array(4).fill("a".repeat(63)).join("."),
+    ]) {
+      await safeError(await run(request({ url: `http://${hostname}/`, params: { app: "ott-play", key: KEY } })), 400);
+    }
+    expect(upstream).not.toHaveBeenCalled();
+    const maximumHostname = [63, 63, 63, 61].map(length => "a".repeat(length)).join(".");
+    const url = `http://${maximumHostname}/`;
+    expect((await run(request({ url, params: { app: "ott-play", key: KEY } }), {
+      ...environment(), VPORTAL_ENDPOINTS_JSON: JSON.stringify([url]),
+    })).status).toBe(200);
+  }, 1000);
+
   it("rejects non-JSON, malformed JSON, and invalid UTF-8 requests", async () => {
     await safeError(await run(request(undefined, { "Content-Type": "text/plain" })), 415);
     for (const body of ["{", new Uint8Array([0xff])]) {
@@ -174,23 +189,30 @@ describe("installation-only VPortal relay", () => {
     const response = await run();
     expect(response.headers.get("Location")).toBeNull();
     expect(response.headers.get("Set-Cookie")).toBeNull();
+    expect(await response.clone().json()).toEqual({ error: "VPortal request failed", code: "upstream_http", upstreamStatus: status });
     await safeError(response, 502);
     expect(upstream).toHaveBeenCalledOnce();
-    expect(upstream.mock.calls[0][1].redirect).toBe("error");
+    expect(upstream.mock.calls[0][1].redirect).toBe("manual");
   });
 
   it("sanitizes thrown transport errors and non-JSON successful responses", async () => {
     upstream.mockRejectedValueOnce(new Error(`${KEY} ${TOKEN} ${ENDPOINT} private failure detail`));
-    await safeError(await run(), 502);
+    const failed = await run();
+    expect(await failed.clone().json()).toEqual({ error: "VPortal request failed", code: "transport" });
+    await safeError(failed, 502);
     for (const body of ["<html>private failure detail</html>", "{", new Uint8Array([0xff])]) {
       upstream.mockResolvedValueOnce(new Response(body));
-      await safeError(await run(), 502);
+      const invalid = await run();
+      expect(await invalid.clone().json()).toEqual({ error: "VPortal request failed", code: "invalid_json" });
+      await safeError(invalid, 502);
     }
   });
 
   it("rejects announced oversized responses and caps chunked responses", async () => {
     upstream.mockResolvedValueOnce(new Response("{}", { headers: { "Content-Length": String(VPORTAL_LIMITS.response + 1) } }));
-    await safeError(await run(), 502);
+    const announced = await run();
+    expect(await announced.clone().json()).toEqual({ error: "VPortal request failed", code: "response_limit" });
+    await safeError(announced, 502);
     const cancel = vi.fn();
     upstream.mockResolvedValueOnce(new Response(new ReadableStream({
       start(controller) {
@@ -198,7 +220,9 @@ describe("installation-only VPortal relay", () => {
         controller.enqueue(new Uint8Array(1));
       }, cancel,
     })));
-    await safeError(await run(), 502);
+    const chunked = await run();
+    expect(await chunked.clone().json()).toEqual({ error: "VPortal request failed", code: "response_limit" });
+    await safeError(chunked, 502);
     expect(cancel).toHaveBeenCalledOnce();
   });
 
@@ -208,7 +232,9 @@ describe("installation-only VPortal relay", () => {
     upstream.mockImplementation(() => stage === "headers" ? new Promise(() => {}) : Promise.resolve(new Response(new ReadableStream({ cancel }))));
     const pending = run();
     await vi.advanceTimersByTimeAsync(VPORTAL_LIMITS.timeout + 1);
-    await safeError(await pending, 504);
+    const response = await pending;
+    expect(await response.clone().json()).toEqual({ error: "VPortal request timed out", code: "timeout" });
+    await safeError(response, 504);
     expect(upstream.mock.calls[0][1].signal.aborted).toBe(true);
     if (stage === "body") expect(cancel).toHaveBeenCalledOnce();
   });

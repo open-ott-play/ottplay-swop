@@ -149,6 +149,10 @@ Authorization never reach the portal. Upstream error bodies and transport
 details are not returned or logged. Valid JSON success bodies are passed through
 with `application/json`, `nosniff`, and no-store, including legacy PHP responses
 that declare another MIME type. No relay response permits cross-origin CORS.
+Relay failures include a fixed `code` (`upstream_http`, `transport`,
+`response_limit`, `invalid_json`, or `timeout`) for operational diagnosis;
+`upstream_http` also supplies the numeric `upstreamStatus`. No upstream URL,
+body, credential, or exception message appears in this diagnostic response.
 
 For a static player host, configure a same-origin backend proxy at
 `/vportal/api` targeting this Worker's `/vportal/api`, with the installation
