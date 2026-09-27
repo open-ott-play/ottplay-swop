@@ -42,6 +42,25 @@ rules, origin routing and client retry behavior separately in the target account
 
 ## Cutover and rollback
 
+Terraform reads the live Worker inventory before each plan. It sends the initial
+`swop-sessions-v1` migration only when the target Worker is absent or has no
+migration tag. When that tag is already present, uploads omit `migrations` and
+retain the existing SQLite namespace and its data. Re-sending the original
+create operation would fail Cloudflare's migration-tag precondition on updates.
+An unknown tag or potentially truncated inventory fails closed; future schema
+migrations need a deliberate update to the expected tag and migration steps.
+Do not delete/recreate the Worker or namespace to work around a tag mismatch.
+Create a fresh plan after applying a configuration fix; an old saved plan still
+contains the old migration operation. The account credential must permit listing
+Workers as well as updating this Worker.
+
+The behavior follows Cloudflare's [upload API migration preconditions](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/methods/update/)
+and the [Terraform provider migration schema](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/resources/workers_script).
+`python3 scripts/test-terraform-migrations.py` covers first creation, upgrading
+a pre-DO Worker, ordinary updates after bootstrap, and rejecting an unexpected
+tag. It copies the production HCL to a temporary directory, supplies fixture
+inventory, and uses a mocked provider without the cloud backend or live state.
+
 1. Validate the built candidate and review a Terraform plan in the existing
    workspace/account. Confirm the allowlist namespace and existing admin secret
    are preserved; check the live routes, rate-limit binding, SQLite class and

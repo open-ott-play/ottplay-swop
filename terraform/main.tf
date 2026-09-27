@@ -7,7 +7,19 @@ resource "cloudflare_workers_kv_namespace" "swop" {
   title      = var.kv_title
 }
 
+# Cloudflare treats migrations as imperative upload operations. The provider
+# re-sends configured migrations on every update, so inspect the live tag first.
+# Listing also handles a fresh account where the Worker does not exist yet.
+data "cloudflare_workers_scripts" "existing" {
+  account_id = var.account
+  max_items  = 10000
+}
+
 locals {
+  existing_worker = [for script in data.cloudflare_workers_scripts.existing.result : script if script.id == var.worker_name]
+  migration_tag   = try(local.existing_worker[0].migration_tag, null)
+  bootstrap       = local.migration_tag == null || local.migration_tag == ""
+
   worker_bindings = concat(
     [
       {
@@ -67,9 +79,20 @@ resource "cloudflare_workers_script" "swop" {
 
   bindings = local.worker_bindings
 
-  migrations = {
+  migrations = local.bootstrap ? {
     new_tag            = "swop-sessions-v1"
     new_sqlite_classes = ["SwopSession"]
+  } : null
+
+  lifecycle {
+    precondition {
+      condition     = length(data.cloudflare_workers_scripts.existing.result) < 10000
+      error_message = "Worker inventory may be truncated; refuse to infer a missing migration tag."
+    }
+    precondition {
+      condition     = local.bootstrap || local.migration_tag == "swop-sessions-v1"
+      error_message = "Unexpected live Durable Object migration tag; review migration history before deploying."
+    }
   }
 
   # Always keep secret_text bindings from the previous upload so an empty
