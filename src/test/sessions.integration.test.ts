@@ -246,6 +246,40 @@ describe("SWOP sessions in workerd", () => {
     expect(polls.filter(r => r.status === "gone")).toHaveLength(7);
   });
 
+  it("preserves installation ownership and separate capabilities across workerd restart", async () => {
+    const consumed = await createInstalled();
+    const pending = await createInstalled();
+    const writeToken = (session: { url: string }) => new URL(session.url).searchParams.get("t")!;
+    for (const [session, value] of [[consumed, "once"], [pending, "survives-restart"]] as const) {
+      expect((await request("POST", "/submit", { code: session.code, token: writeToken(session), value })).status).toBe(200);
+    }
+    expect(await (await installedRequest("POST", "/val", {
+      code: consumed.code, sessionToken: consumed.sessionToken,
+    })).json()).toEqual({ status: "ready", value: "once" });
+    await runtime.dispose();
+    runtime = new Miniflare({ ...convertV4MiniflareOptions(options), resourcePersistencePath: directory });
+    await runtime.ready;
+    expect(await (await installedRequest("POST", "/val", {
+      code: consumed.code, sessionToken: consumed.sessionToken,
+    })).json()).toEqual({ status: "gone" });
+    expect((await request("POST", "/submit", { code: consumed.code, token: writeToken(consumed), value: "replay" })).status).toBe(410);
+    for (const overrides of [
+      { Authorization: `Bearer ${secondInstallationToken}`, Origin: "https://second.test" },
+      { "X-Swop-Client-Id": "other-tv-device" },
+    ]) {
+      expect((await installedRequest("POST", "/val", {
+        code: pending.code, sessionToken: pending.sessionToken,
+      }, overrides)).status).toBe(403);
+    }
+    expect((await installedRequest("POST", "/val", {
+      code: pending.code, sessionToken: writeToken(pending),
+    })).status).toBe(403);
+    // Failed ownership/capability checks must not burn the surviving value.
+    expect(await (await installedRequest("POST", "/val", {
+      code: pending.code, sessionToken: pending.sessionToken,
+    })).json()).toEqual({ status: "ready", value: "survives-restart" });
+  }, 30000);
+
   it("supports proxy transports that preserve JSON bodies but remove custom client headers", async () => {
     const headers = { "X-Swop-Client-Id": "bad" };
     // An explicitly invalid header never downgrades to the body identity.
