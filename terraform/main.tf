@@ -16,6 +16,20 @@ locals {
         namespace_id = cloudflare_workers_kv_namespace.swop.id
       },
       {
+        name       = "SESSIONS"
+        type       = "durable_object_namespace"
+        class_name = "SwopSession"
+      },
+      {
+        name         = "REQUEST_RATE_LIMIT"
+        type         = "ratelimit"
+        namespace_id = "1001"
+        simple = {
+          limit  = 240
+          period = 60
+        }
+      },
+      {
         name = "PUBLIC_BASE_URL"
         type = "plain_text"
         text = var.public_base_url
@@ -33,6 +47,13 @@ locals {
         text = var.admin_token
       },
     ] : [],
+    var.installation_credentials_json != "" ? [
+      {
+        name = "INSTALLATION_CREDENTIALS_JSON"
+        type = "secret_text"
+        text = var.installation_credentials_json
+      },
+    ] : [],
   )
 }
 
@@ -46,9 +67,13 @@ resource "cloudflare_workers_script" "swop" {
 
   bindings = local.worker_bindings
 
+  migrations = {
+    new_tag            = "swop-sessions-v1"
+    new_sqlite_classes = ["SwopSession"]
+  }
+
   # Always keep secret_text bindings from the previous upload so an empty
-  # var.admin_token does not wipe the existing Wrangler ADMIN_TOKEN. When
-  # var.admin_token is set, the ADMIN_TOKEN binding above updates it.
+  # empty secret variables do not wipe existing bindings. A nonempty variable
+  # explicitly updates its corresponding secret.
   keep_bindings = ["secret_text"]
 }
-

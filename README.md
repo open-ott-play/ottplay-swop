@@ -8,147 +8,103 @@ Cloudflare Worker for one-time session handoff: desktop creates a short code, mo
 See the [release strategy](RELEASING.md) for validation, nightly, beta, RC and stable promotion rules, and the [operator runbook](docs/release-workflow.md) for local commands.
 <!-- ci-release-process:end -->
 
-## How it works
+## Installation authorization
 
-```mermaid
-sequenceDiagram
-  autonumber
-  actor Admin as Operator
-  actor TV as TV / desktop<br/>(ottplay-foss)
-  participant W as Worker + KV
-  actor Phone as Phone browser
+All TVs served by an authorized player installation can use remote text entry.
+No per-TV allowlist is needed for this flow. The player uses its same-origin
+`/swop` relay; that backend injects its own `Authorization: Bearer <token>`.
+The installation token is never included in static assets, browser responses,
+localStorage, QR codes, or input links.
 
-  Note over Admin,W: Optional once: allowlist client id
-  Admin->>W: POST /admin/clients<br/>(Bearer ADMIN_TOKEN)
-  W-->>Admin: 201 allowed
+Configure the Worker secret `INSTALLATION_CREDENTIALS_JSON` as a JSON array of
+`{id, token, origins}` objects. Give each installation a different randomly
+generated token of at least 256 bits (64 hexadecimal characters works) and a
+list of exact origins, including scheme and any nondefault port. `originPolicy`
+defaults to `require-origin`. Register each
+local LAN/localhost origin separately. Tokens must match `[A-Za-z0-9_-]{32,256}`.
+Use the Terraform Cloud sensitive variable `installation_credentials_json` or
+`wrangler secret put INSTALLATION_CREDENTIALS_JSON`; never commit real values.
 
-  TV->>W: POST /session<br/>X-Swop-Client-Id + caption/draft
-  Note over W: Fail closed if id missing / not allowlisted
-  W-->>TV: code, url, expiresIn
-  Note over TV: Show QR / link / code
-  Phone->>W: GET /?c=CODE
-  W-->>Phone: HTML form (no client id)
-  Phone->>W: POST /submit<br/>(code, value)
-  W-->>Phone: ok
-  loop Poll until ready / gone / TTL
-    TV->>W: GET /val?c=CODE<br/>X-Swop-Client-Id
-    alt waiting
-      W-->>TV: status waiting
-    else ready (burn-after-read)
-      W-->>TV: status ready + value
-      Note over W: Session deleted from KV
-    else missing / burned / expired
-      W-->>TV: status gone
-    else client mismatch
-      W-->>TV: 403 client mismatch
-    end
-  end
-```
+The relay must:
 
-## API
+- Accept only session creation and polling, and always overwrite the upstream
+  Authorization header with its own credential. Never relay `/admin`, arbitrary
+  paths, redirects, or attacker-chosen upstream URLs.
+- Validate the browser Origin (or Referer for same-origin GET/older browsers)
+  against its actual scheme and host before adding the credential; reject
+  cross-site requests and ambiguous/missing browser provenance.
+- Forward that validated origin to SWOP. The Worker checks it against the
+  credential's exact origin list and rejects `Sec-Fetch-Site: cross-site`.
+- Keep credentials server-side and ensure errors and proxy configuration APIs
+  never disclose them. Origin alone never grants authorization.
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | /session | allowlisted `X-Swop-Client-Id` | Create session; stores clientId; returns code, url, expiresIn |
-| GET | /?c=CODE | none | Mobile HTML form for the session |
-| POST | /submit | none | Submit value (code, value); sets status ready |
-| GET | /val?c=CODE | allowlisted client id; must match session | Poll waiting/ready/gone; burn-after-read on ready |
-| GET | /health | none | ok true |
-| POST | /admin/clients | Bearer `ADMIN_TOKEN` | Allowlist a client id |
-| DELETE | /admin/clients?id=… | Bearer `ADMIN_TOKEN` | Remove allowlist entry |
-| GET | /admin/clients | Bearer `ADMIN_TOKEN` | List allowlisted client ids |
+Managed relays such as here.now may enforce browser same-origin checks themselves
+and strip Origin/Referer before forwarding. Enroll only that backend credential
+with explicit `originPolicy: "trusted-proxy"`. It permits missing provenance
+only for that credential; present foreign Origin/Referer and cross-site metadata
+still fail. Never enable this on an unrestricted public relay. Responses to
+requests without an Origin do not grant an Access-Control-Allow-Origin header.
+Local installation credentials keep the default strict policy.
 
-CORS enabled for GET, POST, DELETE, OPTIONS.
+A copied player, Device ID, or session exchange does not grant an installation
+credential. A captured session capability is limited to its original session,
+installation, client, and original expiry. Public browser applications cannot
+cryptographically attest where a user is running their own modified browser;
+a determined attacker can relay public traffic through an authorized site.
+Backend credentials plus browser origin checks prevent ordinary copied-site
+use and direct unauthorized SWOP access, not an arbitrary non-browser relay.
 
-## Access control
+### API flow
 
-Operator guide for keeping Cloudflare KV (and Worker invocations) limited to
-**your** installs. Random FOSS downloads that point `swopBaseUrl` at your Worker
-must not be able to create sessions or poll `/val`.
+1. The player sends `POST /swop/session` with JSON `{caption, draft, clientId}`.
+   `X-Swop-Client-Id` (or `X-Ottplay-Client-Id`) is also supported. IDs have
+   8–128 characters from `[A-Za-z0-9._:-]`; they identify ownership, not permission.
+2. The relay adds its installation credential. SWOP returns
+   `{code, url, expiresIn, sessionToken, clientId}`. The 256-bit `sessionToken` is the read
+   capability: keep it in memory and never place it in the QR code or phone URL.
+   Legacy TVs without secure random-number support may omit clientId during
+   creation. The Worker issues a random owner ID; use the returned clientId
+   for this session's polls. Missing or invalid poll IDs are rejected.
+3. Show the complete returned `url` in the QR/link. It contains a separate
+   256-bit write capability (`?c=CODE&t=TOKEN`). Opening it renders the phone form;
+   entering the short code alone cannot disclose the draft or submit a value.
+4. The phone sends `POST /submit` with `{code, value, token}`. It needs neither
+   the installation credential nor the Device ID. The supplied link is its
+   temporary permission to enter text for that one session.
+5. The player polls `POST /swop/val` with `{code, clientId, sessionToken}`.
+   `GET /swop/val?c=CODE` with `X-Swop-Client-Id` and
+   `X-Swop-Session-Token` remains supported. The relay adds its credential.
+   SWOP returns `waiting`, `ready` with `value`, or `gone`.
 
-### Why
+Both capabilities are hashed before storage. Responses are `Cache-Control:
+no-store`; phone pages use `Referrer-Policy: no-referrer`. Session allocation,
+submission, and consumption use SQLite-backed Durable Object transactions.
+Concurrent reads consume the value only once; expiry tombstones prevent replay
+or premature reuse. Installation session expiry is never extended by submit.
 
-Anyone can download a FOSS ottplay binary and point it at our Worker. A shared
-secret in the repo would not help: every downloader would have it. "Vasya
-Pupkin" installs must not burn KV quota by creating sessions or polling `/val`.
+The existing rate limiter permits 240 requests per minute. Authenticated
+installation calls share a quota by installation and Cloudflare-observed source
+IP, so attacker-selected Device IDs do not bypass the quota. Unauthenticated,
+legacy, phone, and admin calls use the source-IP quota. Missing rate-limit or
+session-storage bindings fail closed. `GET /health` and OPTIONS are available
+without authentication.
 
-The fix is an **allowlist**: only TVs/desktops whose stable client id is stored
-in KV under `allow:{clientId}` can call protected routes. Phone browsers that
-open the QR session URL do **not** send a client id and do not need one.
+### Legacy compatibility and admin
 
-### Client id
+Existing direct clients without an Authorization header still use KV entries
+`allow:{clientId}`. Legacy sessions retain their existing wire format and phone
+flow. Installation sessions cannot be read using the legacy allowlist, another
+installation, another client, or a write token. A wrong installation credential
+never falls back to a legacy allowlist entry.
 
-Reuse the player **Device UUID** (`dev_…`):
+`/admin/clients` remains protected exclusively by `ADMIN_TOKEN`: POST adds
+`{clientId, note}`, GET lists entries, and DELETE with `?id=...` revokes an entry.
+An installation credential cannot administer the service. Missing admin
+configuration returns 503; an invalid admin credential returns 401.
 
-- Shown in **About** / **Settings → Remote control**
-- Stored in browser `localStorage` as `deviceId`
-- Example shape: `dev_a1b2c3d4e5`
-
-**Rules:** trim whitespace; length **8–128**; charset `[A-Za-z0-9._:-]`.
-
-**Headers** (either name works):
-
-- `X-Swop-Client-Id: <stable-id>`
-- `X-Ottplay-Client-Id: <stable-id>` (alias)
-
-### What is protected / not
-
-See the [API](#api) table above. Summary:
-
-| Kind | Routes |
-|------|--------|
-| **Protected** (allowlisted client id) | `POST /session`, `GET /val` |
-| **Unprotected** (by design) | `GET /?c=`, `POST /submit`, `GET /health`, `OPTIONS` |
-| **Admin** (Bearer ADMIN_TOKEN) | `/admin/clients*` |
-
-If ADMIN_TOKEN is unset, admin routes return **503** and client routes still
-**fail closed** (nobody is allowlisted until you configure the token and add ids).
-
-**Errors:** missing/invalid id -> 401 missing client id; not allowlisted -> 403 client not allowed; /val mismatch -> 403 client mismatch.
-
-### Admin setup (exact steps)
-
-1. Set the admin secret (never put it in `[vars]` or commit it):
-
-   ```bash
-   wrangler secret put ADMIN_TOKEN
-   ```
-
-2. Deploy the Worker (npm run deploy / CI).
-
-3. Set your base URL (workers.dev or custom domain):
-
-   ```bash
-   BASE=https://ottplay-swop.<account>.workers.dev
-   ```
-
-4. Allowlist / list / revoke clients (optional note field for humans):
-
-   ```bash
-   # Allowlist
-   curl -X POST "$BASE/admin/clients" \
-     -H "Authorization: Bearer $ADMIN_TOKEN" \
-     -H "Content-Type: application/json" \
-     -d '{"clientId":"dev_a1b2c3d4e5","note":"living-room"}'
-
-   # List
-   curl -H "Authorization: Bearer $ADMIN_TOKEN" "$BASE/admin/clients"
-
-   # Revoke
-   curl -X DELETE -H "Authorization: Bearer $ADMIN_TOKEN" \
-     "$BASE/admin/clients?id=dev_a1b2c3d4e5"
-   ```
-
-### Manual authorize flow
-
-1. Open the player on the TV/desktop.
-2. Copy Device ID from About / Settings → Remote control (or localStorage.deviceId).
-3. Run the POST admin/clients example above with that id.
-4. Confirm the player sends X-Swop-Client-Id (or alias) on /session and /val, and swopBaseUrl points at your Worker.
-
-Client configuration lives in [ottplay-foss](https://github.com/open-ott-play/ottplay-foss).
-Keep `ADMIN_TOKEN` on the operator's host; public images must not contain it or a
-pre-allowlisted device ID.
+The storage migration retains all allowlist entries and admin credentials.
+Old pending KV sessions expire naturally; start a fresh text-entry session
+following the cutover. See [atomic session migration](docs/atomic-session-migration.md).
 
 ## Setup
 
@@ -176,6 +132,7 @@ Durable Cloudflare resources — Workers KV namespace **and** the Worker script 
   - `key` (sensitive) — Cloudflare Global API Key
   - `public_base_url` — bound to the Worker as `PUBLIC_BASE_URL` (default `https://swop.2560801.xyz`)
   - `session_ttl_seconds` — bound as `SESSION_TTL_SECONDS` (default `600`)
+  - `installation_credentials_json` (sensitive, optional) — JSON installation registry stored only as a secret binding
   - `admin_token` (sensitive, optional) — when set, Terraform manages the `ADMIN_TOKEN` secret_text binding; when empty, `keep_bindings = ["secret_text"]` preserves the existing Wrangler secret
   - TFC remote runs (this workspace is remote): set workspace variables above — local bashrc `TF_VAR_*` is **not** used by the TFC runner
   - Local overrides only if you switch execution to local or use `terraform.tfvars` / `-var`
@@ -186,7 +143,7 @@ Terraform uploads `terraform/build/worker.js` via `cloudflare_workers_script`. A
 
 Then from `terraform/`: `terraform init`, `terraform plan`, `terraform apply`.
 
-**What Terraform owns:** KV namespace (`cloudflare_workers_kv_namespace.swop`) and Worker script (`cloudflare_workers_script.swop`) with KV + plain_text bindings.
+**What Terraform owns:** KV namespace (`cloudflare_workers_kv_namespace.swop`) and Worker script (`cloudflare_workers_script.swop`) with KV, Durable Objects, rate limiter, plain text, and optional secret bindings.
 
 **Outside Terraform for now:** custom hostname / route for `swop.2560801.xyz` (already live). Do not remove it from the Cloudflare dashboard unless you are ready to manage it in TF with the correct zone id.
 
