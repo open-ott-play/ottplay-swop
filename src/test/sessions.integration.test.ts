@@ -5,6 +5,7 @@ import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 
 describe("SWOP sessions in workerd", () => {
   let runtime: Miniflare;
@@ -71,7 +72,7 @@ describe("SWOP sessions in workerd", () => {
     const response = await installedRequest("POST", "/session", { caption: "Protected", draft: "private draft" });
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
-    const result = await response.json() as { code: string; url: string; sessionToken: string };
+    const result = await response.json() as { code: string; url: string; sessionToken: string; entryUrl: string; entryCode: string };
     expect(result.sessionToken).toMatch(/^[a-f0-9]{64}$/);
     expect(result.url).not.toContain(result.sessionToken);
     return result;
@@ -100,6 +101,106 @@ describe("SWOP sessions in workerd", () => {
     expect(await (await installedRequest("GET", `/val?c=${code}`, undefined, pollHeaders)).json()).toEqual({ status: "ready", value: "Телевизор" });
     expect(await (await installedRequest("GET", `/val?c=${code}`, undefined, pollHeaders)).json()).toEqual({ status: "gone" });
     expect((await request("POST", "/submit", { code, value: "replayed", token })).status).toBe(410);
+  });
+
+  it("shows a plain manual code form at the entry URL and accepts a normalized TV code", async () => {
+    const root = await request("GET", "/");
+    expect(root.status).toBe(200);
+    expect(root.headers.get("Cache-Control")).toBe("no-store");
+    const landing = await root.text();
+    expect(landing).toContain('name="entry"');
+    expect(landing).toContain('method="get"');
+    expect(landing).toContain("12-character code");
+    const { code, url, sessionToken, entryUrl, entryCode } = await createInstalled();
+    expect(entryUrl).toBe("https://swop.test/");
+    expect(entryCode).toMatch(/^[A-HJ-NP-Z2-9]{6}-[A-HJ-NP-Z2-9]{6}$/);
+    expect(entryCode.slice(0, 6)).toBe(code);
+    const entered = entryCode.toLowerCase().replace("-", " \t");
+    const form = await request("GET", "/?entry=" + encodeURIComponent(entered));
+    expect(form.status).toBe(200);
+    const body = await form.text();
+    expect(body).toContain("private draft");
+    expect(body).not.toContain(sessionToken);
+    expect(body).not.toContain(new URL(url).searchParams.get("t"));
+    expect(body).toContain(`entryCode: "${entryCode.replace("-", "")}"`);
+    expect((await request("POST", "/submit", { code, entryCode: entered, value: "Manual TV text" })).status).toBe(200);
+    expect((await request("POST", "/submit", { code, entryCode, value: "replay" })).status).toBe(403);
+    expect(await (await installedRequest("GET", `/val?c=${code}`, undefined, { "X-Swop-Session-Token": sessionToken })).json()).toEqual({ status: "ready", value: "Manual TV text" });
+    expect(await (await installedRequest("GET", `/val?c=${code}`, undefined, { "X-Swop-Session-Token": sessionToken })).json()).toEqual({ status: "gone" });
+  });
+
+  function incorrectEntry(entryCode: string): string {
+    return entryCode.slice(0, -1) + (entryCode.endsWith("A") ? "B" : "A");
+  }
+
+  it("counts failed manual form and submit attempts together without resetting on a valid form", async () => {
+    const { code, entryCode, url, sessionToken } = await createInstalled();
+    const wrong = incorrectEntry(entryCode);
+    for (let i = 0; i < 4; i++) expect((await request("GET", `/?entry=${wrong}`)).status).toBe(400);
+    expect((await request("GET", `/?entry=${entryCode}`)).status).toBe(200);
+    for (let i = 0; i < 4; i++) {
+      expect((await request("POST", "/submit", { code, entryCode: wrong, value: "wrong" })).status).toBe(403);
+    }
+    const locked = await request("GET", `/?entry=${entryCode}`);
+    expect(locked.status).toBe(400);
+    expect(await locked.text()).not.toContain("private draft");
+    expect((await request("POST", "/submit", { code, entryCode, value: "locked" })).status).toBe(403);
+    const qr = new URL(url);
+    expect((await request("GET", qr.pathname + qr.search)).status).toBe(200);
+    expect((await request("POST", "/submit", { code, token: qr.searchParams.get("t"), value: "QR still works" })).status).toBe(200);
+    expect(await (await installedRequest("GET", `/val?c=${code}`, undefined, { "X-Swop-Session-Token": sessionToken })).json()).toEqual({ status: "ready", value: "QR still works" });
+  });
+
+  it("atomically locks manual entry after eight concurrent failures while preserving QR access", async () => {
+    const { code, entryCode, url } = await createInstalled();
+    const wrong = incorrectEntry(entryCode);
+    const attempts = await Promise.all(Array.from({ length: 8 }, (_, i) =>
+      i % 2 ? request("GET", `/?entry=${wrong}`) : request("POST", "/submit", { code, entryCode: wrong, value: "wrong" })));
+    expect(attempts.every(response => [400, 403].includes(response.status))).toBe(true);
+    expect((await request("GET", `/?entry=${entryCode}`)).status).toBe(400);
+    const qr = new URL(url);
+    expect((await request("POST", "/submit", { code, token: qr.searchParams.get("t"), value: "Independent QR" })).status).toBe(200);
+  });
+
+  it("rejects short, malformed, mismatched, and legacy manual codes without credential downgrade", async () => {
+    const { code, entryCode, url } = await createInstalled();
+    const token = new URL(url).searchParams.get("t");
+    for (const entry of [code, entryCode + "!", entryCode.replace("-", "—"), "ſ" + entryCode.slice(1)]) {
+      const invalid = await request("GET", "/?entry=" + encodeURIComponent(entry));
+      expect(invalid.status).toBe(400);
+      expect(await invalid.text()).not.toContain("private draft");
+    }
+    expect((await request("GET", `/?c=${code}`)).status).toBe(403);
+    expect((await request("POST", "/submit", { code, token, entryCode: incorrectEntry(entryCode), value: "no downgrade" })).status).toBe(403);
+    expect((await request("POST", "/submit", { code, token, entryCode: "invalid!", value: "no downgrade" })).status).toBe(403);
+    expect((await request("POST", "/submit", { code: "BBBBBB", entryCode, value: "mismatch" })).status).toBe(403);
+    expect((await installedRequest("POST", "/val", { code, clientId: "unregistered-tv", sessionToken: entryCode })).status).toBe(403);
+    const legacy = await create();
+    expect((await request("POST", "/submit", { code: legacy.code, entryCode: legacy.code + "-AAAAAA", value: "legacy downgrade" })).status).toBe(403);
+    expect((await request("GET", `/?c=${legacy.code}`)).status).toBe(200);
+  });
+
+  it("uses identical manual errors for invalid, expired, and locked sessions", async () => {
+    const { entryCode } = await createInstalled();
+    const wrong = incorrectEntry(entryCode);
+    const invalid = await (await request("GET", `/?entry=${wrong}`)).text();
+    const missing = await request("GET", "/?entry=ZZZZZZ-AAAAAA");
+    expect(missing.status).toBe(400);
+    expect(await missing.text()).toBe(invalid);
+    const namespace = await runtime.getDurableObjectNamespace("SESSIONS");
+    await namespace.get(namespace.idFromName("EXPRAB")).fetch("https://session.internal/create", {
+      method: "POST", body: JSON.stringify({
+        installationId: "player-host", clientId: "unregistered-tv", ttl: 0.02,
+        entryCodeHash: createHash("sha256").update("EXPRABAAAAAA").digest("hex"),
+      }),
+    });
+    await new Promise(resolve => setTimeout(resolve, 50));
+    const expired = await request("GET", "/?entry=EXPRAB-AAAAAA");
+    expect(expired.status).toBe(400);
+    expect(await expired.text()).toBe(invalid);
+    expect((await request("POST", "/submit", { code: "EXPRAB", entryCode: "EXPRAB-AAAAAA", value: "expired" })).status).toBe(403);
+    for (let i = 0; i < 7; i++) await request("GET", `/?entry=${wrong}`);
+    expect(await (await request("GET", `/?entry=${entryCode}`)).text()).toBe(invalid);
   });
 
   it("denies spoofed origins, invalid credentials, missing browser binding and admin escalation", async () => {
