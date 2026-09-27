@@ -28,6 +28,8 @@ id = "YOUR_KV_NAMESPACE_ID"
 [vars]
 PUBLIC_BASE_URL = "https://swop.2560801.xyz"
 SESSION_TTL_SECONDS = "600"
+# Exact canonical HTTP(S) API URLs; empty disables the VPortal relay.
+VPORTAL_ENDPOINTS_JSON = "[]"
 
 # ADMIN_TOKEN: for local/dev you may still use:
 #   wrangler secret put ADMIN_TOKEN

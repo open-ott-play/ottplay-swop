@@ -120,6 +120,43 @@ following the cutover. See [atomic session migration](docs/atomic-session-migrat
 
 ## Setup
 
+### VPortal relay
+
+`POST /vportal/api` accepts the player envelope `{url, params}` and forwards only
+`params` as JSON to an operator-approved portal API. `params.app` must be
+`ott-play` and `params.key` must be a nonempty string. The player-host backend
+must overwrite Authorization with its private installation Bearer credential
+and enforce same-origin access, using the same enrollment and origin policy as
+SWOP. This endpoint does not accept the legacy Device ID allowlist and does not
+require a text-entry session or client ID.
+
+Set Terraform's `vportal_endpoints` to the exact API URLs the installation needs;
+it becomes the `VPORTAL_ENDPOINTS_JSON` binding. Its default empty list disables
+the relay. URLs must use canonical HTTP(S), a DNS hostname and the default port,
+without userinfo, query, fragment, percent encoding, or path normalization. There
+are no built-in destinations. Choose only operator-trusted portal hosts; the
+allowlist is an exact destination gate, not a DNS ownership or IP-pinning check.
+HTTP remains available for existing portals; use HTTPS when the portal supports
+it. Never include portal keys in endpoint configuration.
+
+Requests are limited to 128 KiB, encoded params to 64 KiB, responses to 8 MiB,
+and the upstream operation including response body to 25 seconds. The existing
+rate limiter uses a separate VPortal installation/IP key, preserving SWOP's
+quota. At most two relays buffer responses per Worker isolate; additional calls
+receive 503 with `Retry-After: 5`. Redirects are refused. Only fixed JSON headers
+and `User-Agent: OTT-play-FOSS/1.0` accompany the params; caller cookies and
+Authorization never reach the portal. Upstream error bodies and transport
+details are not returned or logged. Valid JSON success bodies are passed through
+with `application/json`, `nosniff`, and no-store, including legacy PHP responses
+that declare another MIME type. No relay response permits cross-origin CORS.
+
+For a static player host, configure a same-origin backend proxy at
+`/vportal/api` targeting this Worker's `/vportal/api`, with the installation
+credential injected on the server. Do not expose that credential in browser
+JavaScript, query parameters, or the proxy response.
+
+### Local development
+
 1. Copy example wrangler config to wrangler.toml; fill placeholders.
 2. Install project dependencies.
 3. Use package scripts for local development; production Worker updates go through Terraform (see Infrastructure).
@@ -144,6 +181,7 @@ Durable Cloudflare resources — Workers KV namespace **and** the Worker script 
   - `key` (sensitive) — Cloudflare Global API Key
   - `public_base_url` — bound to the Worker as `PUBLIC_BASE_URL` (default `https://swop.2560801.xyz`)
   - `session_ttl_seconds` — bound as `SESSION_TTL_SECONDS` (default `600`)
+  - `vportal_endpoints` — exact allowed VPortal API URLs as a Terraform `list(string)`; default `[]` disables the relay
   - `installation_credentials_json` (sensitive, optional) — JSON installation registry stored only as a secret binding
   - `admin_token` (sensitive, optional) — when set, Terraform manages the `ADMIN_TOKEN` secret_text binding; when empty, `keep_bindings = ["secret_text"]` preserves the existing Wrangler secret
   - TFC remote runs (this workspace is remote): set workspace variables above — local bashrc `TF_VAR_*` is **not** used by the TFC runner
