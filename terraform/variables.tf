@@ -38,6 +38,12 @@ variable "session_ttl_seconds" {
   description = "Session TTL in seconds bound to the Worker as SESSION_TTL_SECONDS (plain_text)."
 }
 
+variable "vportal_endpoints" {
+  type        = list(string)
+  default     = []
+  description = "Exact canonical HTTP(S) VPortal API URLs permitted by the installation-authenticated relay. Empty disables the relay. No keys or credentials belong in these URLs."
+}
+
 variable "admin_token" {
   type        = string
   default     = ""

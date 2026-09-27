@@ -51,6 +51,11 @@ locals {
         type = "plain_text"
         text = tostring(var.session_ttl_seconds)
       },
+      {
+        name = "VPORTAL_ENDPOINTS_JSON"
+        type = "plain_text"
+        text = jsonencode(var.vportal_endpoints)
+      },
     ],
     var.admin_token != "" ? [
       {
