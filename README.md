@@ -60,17 +60,29 @@ use and direct unauthorized SWOP access, not an arbitrary non-browser relay.
    `X-Swop-Client-Id` (or `X-Ottplay-Client-Id`) is also supported. IDs have
    8–128 characters from `[A-Za-z0-9._:-]`; they identify ownership, not permission.
 2. The relay adds its installation credential. SWOP returns
-   `{code, url, expiresIn, sessionToken, clientId}`. The 256-bit `sessionToken` is the read
+   `{code, url, expiresIn, sessionToken, clientId, entryUrl, entryCode}`. The 256-bit `sessionToken` is the read
    capability: keep it in memory and never place it in the QR code or phone URL.
    Legacy TVs without secure random-number support may omit clientId during
    creation. The Worker issues a random owner ID; use the returned clientId
    for this session's polls. Missing or invalid poll IDs are rejected.
-3. Show the complete returned `url` in the QR/link. It contains a separate
+3. Show `entryUrl` and `entryCode` on the TV for manual browser entry, and encode
+   the complete returned `url` in the QR/link. The QR URL contains a separate
    256-bit write capability (`?c=CODE&t=TOKEN`). Opening it renders the phone form;
-   entering the short code alone cannot disclose the draft or submit a value.
+   entering the six-character session ID alone cannot disclose the draft or submit a value.
+   For manual entry, users open `entryUrl` and enter the 12-character code, shown
+   as `ABCDEF-GHJKLM`. Lowercase, ASCII whitespace, and the optional hyphen are
+   accepted; ambiguous `0`, `O`, `1`, and `I` are never generated. The root page
+   is a simple code form, so users do not need a phone or a long URL.
 4. The phone sends `POST /submit` with `{code, value, token}`. It needs neither
    the installation credential nor the Device ID. The supplied link is its
    temporary permission to enter text for that one session.
+   The manual form instead sends `{code, value, entryCode}`. Only the hash of
+   the full normalized manual code is stored. Eight incorrect manual attempts
+   across form viewing and submission lock that manual code until session expiry;
+   successful form viewing neither resets the counter nor extends expiry. The
+   independent QR capability remains usable after manual lockout. Invalid,
+   expired, and locked codes receive the same error. Manual entry does not grant
+   read access or expose either QR or read token.
 5. The player polls `POST /swop/val` with `{code, clientId, sessionToken}`.
    `GET /swop/val?c=CODE` with `X-Swop-Client-Id` and
    `X-Swop-Session-Token` remains supported. The relay adds its credential.

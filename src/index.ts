@@ -311,7 +311,38 @@ function requireAdmin(request: Request, env: Env): Response | null {
   return null;
 }
 
-function formPage(code: string, caption: string, draft: string, token = ""): string {
+function normalizeEntryCode(value: string): string | null {
+  if (value.length > 64 || !/^[A-Za-z2-9 \t\r\n-]+$/.test(value)) return null;
+  const normalized = value.toUpperCase().replace(/[ \t\r\n-]/g, "");
+  return new RegExp(`^[${wire.swopCodeAlphabet}]{${wire.swopCodeLength * 2}}$`).test(normalized) ? normalized : null;
+}
+
+function entryPage(error = false): string {
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Remote text entry</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, -apple-system, sans-serif; }
+  body { margin: 0 auto; max-width: 28rem; padding: 1.5rem; }
+  h1 { font-size: 1.4rem; } p { line-height: 1.5; }
+  label { display: block; margin: 1.25rem 0 .5rem; }
+  input, button { width: 100%; box-sizing: border-box; padding: .9rem; border-radius: .5rem; font: inherit; }
+  input { border: 1px solid #8888; font-size: 1.4rem; letter-spacing: .12em; text-transform: uppercase; }
+  button { margin-top: 1rem; border: 0; background: #2563eb; color: #fff; cursor: pointer; }
+  .error { color: #dc2626; }
+</style></head><body>
+<h1>Enter text for your TV</h1>
+<p>Enter the 12-character code shown on your TV. You can include or omit the space or hyphen.</p>
+${error ? '<p class="error" role="alert">Code unavailable. Check the full code or request a new one on your TV.</p>' : ""}
+<form action="/" method="get">
+  <label for="entry">TV code</label>
+  <input id="entry" name="entry" type="text" placeholder="ABCDEF-GHJKLM" maxlength="32" autocomplete="off" autocapitalize="characters" spellcheck="false" required autofocus />
+  <button type="submit">Continue</button>
+</form></body></html>`;
+}
+
+function formPage(code: string, caption: string, draft: string, token = "", entryCode = ""): string {
   const safeCaption = escapeHtml(caption || "Enter value");
   const safeDraft = escapeHtml(draft);
   const safeCode = escapeHtml(code);
@@ -363,7 +394,7 @@ function formPage(code: string, caption: string, draft: string, token = ""): str
         const res = await fetch(${JSON.stringify(wire.swopSubmitPath)}, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code: ${JSON.stringify(code)}, token: ${JSON.stringify(token)}, value }),
+          body: JSON.stringify({ code: ${JSON.stringify(code)}, token: ${JSON.stringify(token)}, ${entryCode ? `entryCode: ${JSON.stringify(entryCode)}, ` : ""}value }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
@@ -405,18 +436,32 @@ async function handleSession(
   } : {};
   for (let attempt = 0; attempt < 12; attempt++) {
     const code = randomCode();
-    const response = await sessionCall(env, code, "create", { clientId: auth.clientId, caption, draft, ttl, ...capabilities });
+    const entryCode = auth.installationId ? `${code}-${randomCode()}` : undefined;
+    const response = await sessionCall(env, code, "create", {
+      clientId: auth.clientId, caption, draft, ttl, ...capabilities,
+      ...(entryCode ? { entryCodeHash: await tokenHash(normalizeEntryCode(entryCode)!) } : {}),
+    });
     if (response.status === 409) continue;
     if (!response.ok) return json(await response.json(), response.status);
     const base = (env.PUBLIC_BASE_URL || "").replace(/\/$/, "");
-    return json({ code, url: `${base}/?c=${encodeURIComponent(code)}${submitToken ? `&t=${submitToken}` : ""}`, expiresIn: ttl, ...(sessionToken ? { sessionToken, clientId: auth.clientId } : {}) });
+    return json({ code, url: `${base}/?c=${encodeURIComponent(code)}${submitToken ? `&t=${submitToken}` : ""}`, expiresIn: ttl,
+      ...(sessionToken ? { sessionToken, clientId: auth.clientId, entryUrl: `${base}/`, entryCode } : {}) });
   }
   return json({ error: "could not allocate session" }, 503);
 }
 
 async function handleForm(url: URL, env: Env): Promise<Response> {
+  if (url.searchParams.has("entry")) {
+    const entryCode = normalizeEntryCode(url.searchParams.get("entry") || "");
+    if (!entryCode) return html(entryPage(true), 400);
+    const code = entryCode.slice(0, wire.swopCodeLength);
+    const response = await sessionCall(env, code, "form", { entryCodeHash: await tokenHash(entryCode) });
+    if (!response.ok) return html(entryPage(true), 400);
+    const data = await response.json() as { caption?: string; draft?: string };
+    return html(formPage(code, data.caption || "", data.draft || "", "", entryCode));
+  }
   const code = (url.searchParams.get("c") || "").trim().toUpperCase();
-  if (!code) return html("<!DOCTYPE html><title>Missing code</title><p>Missing session code (?c=).</p>", 400);
+  if (!code) return html(entryPage());
   const supplied = url.searchParams.get("t") || "";
   const token = /^[a-f0-9]{64}$/.test(supplied) ? supplied : "";
   const response = await sessionCall(env, code, "form", { submitTokenHash: await tokenHash(token) });
@@ -428,14 +473,23 @@ async function handleForm(url: URL, env: Env): Promise<Response> {
 }
 
 async function handleSubmit(request: Request, env: Env): Promise<Response> {
-  let body: { code?: string; value?: string; token?: string };
+  let body: { code?: string; value?: string; token?: string; entryCode?: string };
   try { body = await request.json(); }
   catch { return json({ error: "Invalid JSON" }, 400); }
   const code = typeof body.code === "string" ? body.code.trim().toUpperCase() : "";
   const value = typeof body.value === "string" ? body.value : "";
   if (!code || !value) return json({ error: "code and value are required" }, 400);
   if (value.length > wire.swopValueLimit) return json({ error: "value too long" }, 400);
-  const response = await sessionCall(env, code, "submit", { value, ttl: ttlSeconds(env), submitTokenHash: await tokenHash(typeof body.token === "string" ? body.token : "") });
+  const manual = body.entryCode !== undefined;
+  const entryCode = manual && typeof body.entryCode === "string" ? normalizeEntryCode(body.entryCode) : null;
+  if (manual && (!entryCode || entryCode.slice(0, wire.swopCodeLength) !== code)) {
+    return json({ error: "entry code unavailable" }, 403);
+  }
+  const response = await sessionCall(env, code, "submit", {
+    value, ttl: ttlSeconds(env), submitTokenHash: await tokenHash(typeof body.token === "string" ? body.token : ""),
+    ...(entryCode ? { entryCodeHash: await tokenHash(entryCode) } : {}),
+  });
+  if (manual && !response.ok) return json({ error: "entry code unavailable" }, 403);
   return json(await response.json(), response.status);
 }
 
