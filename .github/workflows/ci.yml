@@ -110,4 +110,7 @@ jobs:
       - name: Terraform validate
         working-directory: terraform
         run: terraform validate
+
+      - name: Terraform migration contracts (mocked provider)
+        run: python3 scripts/test-terraform-migrations.py
     timeout-minutes: 30
