@@ -6,6 +6,19 @@ name = "ottplay-swop"
 main = "src/index.ts"
 compatibility_date = "2025-09-01"
 
+[[durable_objects.bindings]]
+name = "SESSIONS"
+class_name = "SwopSession"
+
+[[migrations]]
+tag = "swop-sessions-v1"
+new_sqlite_classes = ["SwopSession"]
+
+[[ratelimits]]
+name = "REQUEST_RATE_LIMIT"
+namespace_id = "1001"
+simple = { limit = 240, period = 60 }
+
 # account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"
 
 [[kv_namespaces]]
@@ -20,3 +33,9 @@ SESSION_TTL_SECONDS = "600"
 #   wrangler secret put ADMIN_TOKEN
 # Production: set TFC sensitive var admin_token, or leave unset so Terraform
 # keep_bindings preserves the existing secret_text binding on updates.
+
+# INSTALLATION_CREDENTIALS_JSON: secret [{id, token, origins}] for trusted
+# player-host backends. Generate independent 256-bit tokens per installation.
+#   wrangler secret put INSTALLATION_CREDENTIALS_JSON
+# Production: set sensitive TFC variable installation_credentials_json.
+# Never put this secret in [vars], static player files, or browser storage.

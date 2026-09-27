@@ -44,3 +44,10 @@ variable "admin_token" {
   sensitive   = true
   description = "Optional ADMIN_TOKEN secret_text binding. Leave empty to keep the existing Wrangler secret via keep_bindings."
 }
+
+variable "installation_credentials_json" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "Optional INSTALLATION_CREDENTIALS_JSON secret: [{id,token,origins}]. Each token stays on its installation backend; never publish it in the player. Empty preserves the existing secret binding."
+}
