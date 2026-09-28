@@ -193,13 +193,15 @@ Durable Cloudflare resources — Workers KV namespace **and** the Worker script 
 
 ### Build the Worker artifact (required before plan/apply)
 
-Terraform uploads `terraform/build/worker.js` via `cloudflare_workers_script`. Always rebuild the bundle into that path before plan/apply (see package script `build:terraform` and the matching helper in `scripts/`). The package `build` step produces `dist/index.js`, which must be copied to `terraform/build/worker.js` (gitignored; `terraform/build/.gitkeep` is kept).
+Terraform uploads `terraform/build/worker.js` via `cloudflare_workers_script`. For a Worker code deployment, rebuild the bundle into that path before plan/apply (see package script `build:terraform` and the matching helper in `scripts/`). The package `build` step produces `dist/index.js`, which must be copied to `terraform/build/worker.js` (gitignored; `terraform/build/.gitkeep` is kept). For an infrastructure-only import, retain the exact deployed artifact as described below.
 
 Then from `terraform/`: `terraform init`, `terraform plan`, `terraform apply`.
 
 **What Terraform owns:** KV namespace (`cloudflare_workers_kv_namespace.swop`) and Worker script (`cloudflare_workers_script.swop`) with KV, Durable Objects, rate limiter, plain text, and optional secret bindings.
 
-**Outside Terraform for now:** custom hostname / route for `swop.2560801.xyz` (already live). Do not remove it from the Cloudflare dashboard unless you are ready to manage it in TF with the correct zone id.
+**Existing custom domains (optional):** `custom_domain_hostname` defaults to `null`, so other installations do not adopt this project's hostname. To adopt a domain already routed to the configured production Worker, set this non-secret Terraform variable persistently in the deployment workspace. Terraform looks up that exact existing route and imports it with `prevent_destroy`; it does not provision a new hostname. Keep the variable set on subsequent runs to retain ownership.
+
+For an import-only change, preserve the exact deployed configuration and `terraform/build/worker.js` artifact. Review a full plan showing one import, zero resource additions/updates/deletions, and a Worker `no-op` before applying. Rebuilding current application source is unnecessary for this ownership change. A missing or mismatched existing domain fails the plan.
 
 **Wrangler still useful for:** local `dev` / `tail` and secret experiments. Prefer Terraform apply for production script updates.
 

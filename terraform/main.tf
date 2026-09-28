@@ -1,6 +1,6 @@
 # Terraform manages KV + Worker script upload.
-# Always build worker artifact into terraform/build before plan/apply.
-# Custom hostname swop.2560801.xyz stays outside Terraform for now.
+# Build the Worker for code updates; imports preserve the deployed artifact.
+# Existing custom domains can be adopted explicitly; see custom-domain.tf.
 
 resource "cloudflare_workers_kv_namespace" "swop" {
   account_id = var.account

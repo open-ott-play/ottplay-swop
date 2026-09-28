@@ -24,6 +24,6 @@ output "deploy_hint" {
     # KV:     ${cloudflare_workers_kv_namespace.swop.id}
     # PUBLIC_BASE_URL / SESSION_TTL_SECONDS come from Terraform variables.
     # ADMIN_TOKEN: set TFC sensitive var admin_token, or leave unset to preserve the existing Wrangler secret.
-    # Custom hostname swop.2560801.xyz remains outside Terraform for now.
+    # Existing custom domains are optional: set custom_domain_hostname to adopt.
   EOT
 }
