@@ -167,6 +167,12 @@ JavaScript, query parameters, or the proxy response.
 
 wrangler.toml is gitignored and must never be committed with real credentials.
 
+The version-scoped npm override for `miniflare@5.20260815.0-alpha` replaces its
+development-only `sharp 0.35.2` dependency with `0.35.4` to address
+[GHSA-rgj7-g3m4-5g8c](https://github.com/advisories/GHSA-rgj7-g3m4-5g8c).
+It reuses the patched version already required by the direct Miniflare dependency.
+Remove the override when `@cloudflare/vitest-pool-workers` no longer brings in that older Miniflare.
+
 Note: no CF credentials in terraform; keep them outside .tf and state.
 
 ## Infrastructure (Terraform Cloud)

@@ -12,6 +12,11 @@
     "build:terraform": "bash scripts/build-worker-for-terraform.sh",
     "test": "python3 scripts/generate-wire-contracts.py --check && node tests/test-wire-contracts.cjs && vitest run"
   },
+  "overrides": {
+    "miniflare@5.20260815.0-alpha": {
+      "sharp": "0.35.4"
+    }
+  },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@cloudflare/workers-types": "^5.20260903.1",
