@@ -13,6 +13,10 @@ run "new_worker_bootstraps_sessions" {
     condition     = cloudflare_workers_script.swop.migrations.new_tag == "swop-sessions-v1" && cloudflare_workers_script.swop.migrations.new_sqlite_classes[0] == "SwopSession"
     error_message = "A new Worker must provision the SQLite session namespace once."
   }
+  assert {
+    condition     = length(cloudflare_workers_custom_domain.swop) == 0
+    error_message = "Default installations must not adopt any project's custom domain."
+  }
 }
 
 run "pre_durable_object_worker_bootstraps_sessions" {
