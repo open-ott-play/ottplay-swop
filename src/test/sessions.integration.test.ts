@@ -334,14 +334,34 @@ describe("SWOP sessions in workerd", () => {
   });
 
   it("bounds streamed JSON bodies before cloning or parsing them", async () => {
-    const huge = "x".repeat(40000);
-    expect((await installedRequest("POST", "/session", { draft: huge })).status).toBe(413);
-    expect((await installedRequest("POST", "/val", { clientId: huge })).status).toBe(413);
-    expect((await request("POST", "/submit", { code: "ABCDEF", value: huge })).status).toBe(413);
+    expect((await installedRequest("POST", "/session", { draft: "x".repeat(32768) })).status).toBe(413);
+    expect((await installedRequest("POST", "/val", { clientId: "x".repeat(16384) })).status).toBe(413);
+    expect((await request("POST", "/submit", { code: "ABCDEF", value: "x".repeat(65536) })).status).toBe(413);
     // Existing value limit counts characters, not UTF-8 bytes.
     const { code, url } = await createInstalled();
     const token = new URL(url).searchParams.get("t")!;
     expect((await request("POST", "/submit", { code, token, value: "漢".repeat(8000) })).status).toBe(200);
+  });
+
+  it("preserves the full JSON-escaped draft and value limits through one-time delivery", async () => {
+    const caption = "\u0001".repeat(200);
+    const draft = "\u0001".repeat(4000);
+    const created = await installedRequest("POST", "/session", { caption, draft });
+    expect(created.status).toBe(200);
+    const { code, url, sessionToken } = await created.json() as { code: string; url: string; sessionToken: string };
+    const target = new URL(url);
+    const token = target.searchParams.get("t")!;
+    const form = await request("GET", target.pathname + target.search);
+    expect(form.status).toBe(200);
+    expect(await form.text()).toContain(draft);
+
+    // Semantic limits remain independent of the larger byte envelope.
+    expect((await request("POST", "/submit", { code, token, value: "x".repeat(8001) })).status).toBe(400);
+    const value = "\u0001".repeat(8000);
+    expect((await request("POST", "/submit", { code, token, value })).status).toBe(200);
+    const poll = { code, clientId: "unregistered-tv", sessionToken };
+    expect(await (await installedRequest("POST", "/val", poll)).json()).toEqual({ status: "ready", value });
+    expect(await (await installedRequest("POST", "/val", poll)).json()).toEqual({ status: "gone" });
   });
 
   it("creates, renders and waits using the existing wire format", async () => {

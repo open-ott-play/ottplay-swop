@@ -129,8 +129,11 @@ async function objectBody(request: Request): Promise<Record<string, unknown>> {
 
 async function boundedRequest(request: Request, path: string): Promise<Request | Response> {
   if (request.method !== "POST" || !request.body) return request;
-  // Submit preserves the existing 8,000-character limit even for UTF-8 text.
-  const limit = path === wire.swopSubmitPath ? 32768 : 16384;
+  // JSON can use six bytes per UTF-16 unit (for example, "\\u0001").
+  // Include room for the full caption/draft or value plus session metadata;
+  // the semantic character limits are still enforced by the handlers.
+  const limit = path === wire.swopSubmitPath ? 65536
+    : path === wire.swopSessionPath ? 32768 : 16384;
   const length = request.headers.get("Content-Length");
   if (length !== null && Number(length) > limit) return json({ error: "payload too large" }, 413);
   const reader = request.body.getReader();
