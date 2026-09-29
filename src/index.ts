@@ -1,5 +1,5 @@
 import { validSwopClientId, wire } from "./wire-contracts";
-import { requireInstallation, timingSafeEqual } from "./installation-auth";
+import { requireInstallation, timingSafeEqual, type InstallationAuthorization } from "./installation-auth";
 import { handleVPortal } from "./vportal";
 export { SwopSession } from "./session";
 
@@ -127,6 +127,11 @@ async function objectBody(request: Request): Promise<Record<string, unknown>> {
   } catch { return {}; }
 }
 
+function cancelRequestBody(request: Request): void {
+  // Rejection must not wait for a caller-controlled stream to finish cancelling.
+  void request.body?.cancel().catch(() => {});
+}
+
 async function boundedRequest(request: Request, path: string): Promise<Request | Response> {
   if (request.method !== "POST" || !request.body) return request;
   // JSON can use six bytes per UTF-16 unit (for example, "\\u0001").
@@ -135,19 +140,26 @@ async function boundedRequest(request: Request, path: string): Promise<Request |
   const limit = path === wire.swopSubmitPath ? 65536
     : path === wire.swopSessionPath ? 32768 : 16384;
   const length = request.headers.get("Content-Length");
-  if (length !== null && Number(length) > limit) return json({ error: "payload too large" }, 413);
+  if (length !== null && Number(length) > limit) {
+    cancelRequestBody(request);
+    return json({ error: "payload too large" }, 413);
+  }
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > limit) {
-      await reader.cancel();
-      return json({ error: "payload too large" }, 413);
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) {
+        void reader.cancel().catch(() => {});
+        return json({ error: "payload too large" }, 413);
+      }
+      chunks.push(value);
     }
-    chunks.push(value);
+  } finally {
+    reader.releaseLock();
   }
   const body = new Uint8Array(size);
   let offset = 0;
@@ -155,7 +167,7 @@ async function boundedRequest(request: Request, path: string): Promise<Request |
   return new Request(request, { body });
 }
 
-function clientResponse(response: Response, request: Request, auth: ClientAuthorization): Response {
+function clientResponse(response: Response, request: Request, auth: Pick<ClientAuthorization, "installationId">): Response {
   if (!auth.installationId) return response;
   const headers = new Headers(response.headers);
   const origin = request.headers.get("Origin");
@@ -187,10 +199,12 @@ async function requireAllowlistedClient(
   return { clientId };
 }
 
-async function requireClient(request: Request, env: Env): Promise<ClientAuthorization | Response> {
+async function requireClient(
+  request: Request, env: Env, verifiedInstallation?: InstallationAuthorization,
+): Promise<ClientAuthorization | Response> {
   if (!request.headers.has("Authorization")) return requireAllowlistedClient(request, env);
   // Explicit credentials never downgrade to the legacy Device ID allowlist.
-  const installation = requireInstallation(request, env);
+  const installation = verifiedInstallation ?? requireInstallation(request, env);
   if (installation instanceof Response) return installation;
   const body = await objectBody(request);
   let clientId = parseClientId(request, body);
@@ -510,26 +524,32 @@ export default {
     }
 
     try {
-      const bounded = await boundedRequest(request, path);
-      if (bounded instanceof Response) {
-        return request.headers.has("Authorization") ? withoutCors(bounded) : bounded;
-      }
-      request = bounded;
       if (request.method === "GET" && path === "/health") {
         return json({ ok: true });
       }
 
       const protectedRoute = (path === wire.swopSessionPath && request.method === "POST") ||
         (path === wire.swopValuePath && ["GET", "POST"].includes(request.method));
+      // Installation permission and quota depend only on trusted headers.
+      // Reject before reading a body, including requests with a missing owner ID.
       const installationAuth = protectedRoute && request.headers.has("Authorization") ?
-        await requireClient(request, env) : undefined;
+        requireInstallation(request, env) : undefined;
       const limited = await enforceRateLimit(request, env,
         installationAuth && !(installationAuth instanceof Response) ? installationAuth.installationId : undefined);
       if (limited) {
+        cancelRequestBody(request);
         if (installationAuth instanceof Response) return withoutCors(limited);
         return installationAuth ? clientResponse(limited, request, installationAuth) : limited;
       }
-      if (installationAuth instanceof Response) return withoutCors(installationAuth);
+      if (installationAuth instanceof Response) {
+        cancelRequestBody(request);
+        return withoutCors(installationAuth);
+      }
+      const bounded = await boundedRequest(request, path);
+      if (bounded instanceof Response) {
+        return request.headers.has("Authorization") ? withoutCors(bounded) : bounded;
+      }
+      request = bounded;
 
       if (path === "/admin/clients") {
         const denied = requireAdmin(request, env);
@@ -549,9 +569,9 @@ export default {
       }
 
       if (request.method === "POST" && path === wire.swopSessionPath) {
-        const auth = installationAuth || await requireClient(request, env);
+        const auth = await requireClient(request, env, installationAuth);
         if (auth instanceof Response) {
-          return auth;
+          return installationAuth ? withoutCors(auth) : auth;
         }
         return clientResponse(await handleSession(request, env, auth), request, auth);
       }
@@ -559,9 +579,9 @@ export default {
         return await handleSubmit(request, env);
       }
       if ((request.method === "GET" || request.method === "POST") && path === wire.swopValuePath) {
-        const auth = installationAuth || await requireClient(request, env);
+        const auth = await requireClient(request, env, installationAuth);
         if (auth instanceof Response) {
-          return auth;
+          return installationAuth ? withoutCors(auth) : auth;
         }
         return clientResponse(await handleVal(request, url, env, auth), request, auth);
       }
@@ -570,6 +590,7 @@ export default {
       }
       return json({ error: "not found" }, 404);
     } catch {
+      cancelRequestBody(request);
       // Storage/configuration errors can contain operational details or secrets.
       const response = json({ error: "internal error" }, 500);
       return request.headers.has("Authorization") &&
