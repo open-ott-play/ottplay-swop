@@ -97,8 +97,11 @@ or premature reuse. Installation session expiry is never extended by submit.
 The existing rate limiter permits 240 requests per minute. Authenticated
 installation calls share a quota by installation and Cloudflare-observed source
 IP, so attacker-selected Device IDs do not bypass the quota. Unauthenticated,
-legacy, phone, and admin calls use the source-IP quota. Missing rate-limit or
-session-storage bindings fail closed. `GET /health` and OPTIONS are available
+legacy, phone, and admin calls use the source-IP quota. The Worker checks
+installation headers and quota before reading POST bodies; rejected streams are
+cancelled without delaying the response. Valid installation credentials use the
+same installation/IP quota even when the owner ID is missing or malformed.
+Missing rate-limit or session-storage bindings fail closed. `GET /health` and OPTIONS are available
 without authentication.
 
 ### Legacy compatibility and admin
