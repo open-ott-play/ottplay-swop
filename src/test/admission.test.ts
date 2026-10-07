@@ -9,6 +9,7 @@ function makeEnv(success = true) {
   const limit = vi.fn().mockResolvedValue({ success });
   const get = vi.fn().mockResolvedValue(null);
   const sessionFetch = vi.fn().mockResolvedValue(Response.json({ ok: true }));
+  const idFromName = vi.fn((value: string): string => value);
   const env = {
     PUBLIC_BASE_URL: "https://swop.test",
     INSTALLATION_CREDENTIALS_JSON: JSON.stringify([
@@ -17,9 +18,9 @@ function makeEnv(success = true) {
     ]),
     REQUEST_RATE_LIMIT: { limit },
     SWOP: { get },
-    SESSIONS: { idFromName: vi.fn(value => value), get: vi.fn(() => ({ fetch: sessionFetch })) },
+    SESSIONS: { idFromName, get: vi.fn(() => ({ fetch: sessionFetch })) },
   } as unknown as Env;
-  return { env, limit, get, sessionFetch };
+  return { env, limit, get, sessionFetch, idFromName };
 }
 
 function unreadableRequest(path: string, headers: Record<string, string> = {}, rejectCancel = false) {
@@ -161,5 +162,231 @@ describe("SWOP admission before body reads", () => {
     expect(session.sessionTokenHash).toMatch(/^[a-f0-9]{64}$/);
     expect(session.submitTokenHash).toMatch(/^[a-f0-9]{64}$/);
     expect(session.sessionTokenHash).not.toBe(session.submitTokenHash);
+  });
+});
+
+const externalHost = "swop.test";
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function countExternal(request: Request, env: Env) {
+  const originalClone = Request.prototype.clone;
+  const originalJson = Request.prototype.json;
+  let clones = 0;
+  let jsons = 0;
+  const cloneSpy = vi.spyOn(Request.prototype, "clone").mockImplementation(function (this: Request) {
+    const cloned = originalClone.call(this);
+    if (new URL(this.url).hostname === externalHost) clones += 1;
+    return cloned;
+  });
+  const jsonSpy = vi.spyOn(Request.prototype, "json").mockImplementation(async function (this: Request) {
+    const external = new URL(this.url).hostname === externalHost;
+    try {
+      return await originalJson.call(this);
+    } finally {
+      if (external) jsons += 1;
+    }
+  });
+  try {
+    const response = await worker.fetch(request, env);
+    return { response, clones, jsons };
+  } finally {
+    cloneSpy.mockRestore();
+    jsonSpy.mockRestore();
+  }
+}
+
+describe("header presence skips the unused identity body", () => {
+  it.each([
+    ["primary", { "X-Swop-Client-Id": "primary-id", "X-Ottplay-Client-Id": "fallbackid" }, { clientId: "body-client" }, "primary-id", 200, 0, 1],
+    ["fallback", { "X-Ottplay-Client-Id": "fallbackid" }, { clientId: "body-client" }, "fallbackid", 200, 0, 1],
+    ["conflict", { "X-Swop-Client-Id": "primary-id", "X-Ottplay-Client-Id": "fallbackid" }, { clientId: "body-client" }, "primary-id", 200, 0, 1],
+    ["empty primary", { "X-Swop-Client-Id": "", "X-Ottplay-Client-Id": "fallbackid" }, { clientId: "body-client" }, "<generated>", 200, 0, 1],
+    ["body only", {}, { clientId: "body-client" }, "body-client", 200, 1, 2],
+    ["absent", {}, {}, "<generated>", 200, 1, 2],
+    ["invalid", { "X-Swop-Client-Id": "bad", "X-Ottplay-Client-Id": "fallbackid" }, { clientId: "body-client" }, "<rejected>", 401, 0, 0],
+  ] as const)("%s binds the selected client and counts only the external fixture", async (_name, extra, fields, expected, status, clones, jsons) => {
+    const context = makeEnv();
+    const body = JSON.stringify({ ...fields, caption: "TV", draft: "input" });
+    const counted = await countExternal(new Request("https://swop.test/session", {
+      method: "POST",
+      headers: { Authorization: authorization, Origin: origin, "Content-Type": "application/json", ...extra },
+      body,
+    }), context.env);
+    expect(counted.clones).toBe(clones);
+    expect(counted.jsons).toBe(jsons);
+    expect(counted.response.status).toBe(status);
+    expect(context.get).not.toHaveBeenCalled();
+    if (status === 401) {
+      expect(counted.response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+      expect(await counted.response.json()).toEqual({ error: "missing client id" });
+      expect(context.sessionFetch).not.toHaveBeenCalled();
+      return;
+    }
+    expect(counted.response.headers.get("Access-Control-Allow-Origin")).toBe(origin);
+    expect(context.sessionFetch).toHaveBeenCalledOnce();
+    const session = await context.sessionFetch.mock.calls[0][0].json();
+    const clientId = expected === "<generated>" ? session.clientId : expected;
+    if (expected === "<generated>") {
+      expect(session.clientId).toMatch(/^swop_[a-f0-9]{64}$/);
+      expect(session.clientId).not.toBe("body-client");
+      expect(session.clientId).not.toBe("fallbackid");
+    } else {
+      expect(session.clientId).toBe(expected);
+    }
+    expect(session).toMatchObject({ installationId: "player-host", clientId, caption: "TV", draft: "input" });
+  });
+
+  it("keeps malformed and absent header-owned bodies on the existing default and null paths", async () => {
+    const malformed = makeEnv();
+    const bad = await countExternal(new Request("https://swop.test/session", {
+      method: "POST",
+      headers: { ...installed, "Content-Type": "application/json" },
+      body: "{",
+    }), malformed.env);
+    expect(bad.response.status).toBe(200);
+    expect(bad.clones).toBe(0);
+    expect(bad.jsons).toBe(1);
+    expect(await bad.response.json()).toMatchObject({ clientId: "test-client" });
+    expect(await malformed.sessionFetch.mock.calls[0][0].json()).toMatchObject({ clientId: "test-client", caption: "", draft: "" });
+
+    const absent = makeEnv();
+    const empty = await countExternal(new Request("https://swop.test/session", {
+      method: "POST",
+      headers: installed,
+    }), absent.env);
+    expect(empty.response.status).toBe(200);
+    expect(empty.clones).toBe(0);
+    expect(await absent.sessionFetch.mock.calls[0][0].json()).toMatchObject({ caption: "", draft: "" });
+
+    const nulled = makeEnv();
+    const response = await worker.fetch(new Request("https://swop.test/session", {
+      method: "POST",
+      headers: { ...installed, "Content-Type": "application/json" },
+      body: "null",
+    }), nulled.env);
+    expect(response.status).toBe(500);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    expect(await response.json()).toEqual({ error: "internal error" });
+    expect(nulled.sessionFetch).not.toHaveBeenCalled();
+  });
+
+  it("preserves value code and token precedence, ready consumption, and handler origin", async () => {
+    const headerToken = "b".repeat(64);
+    const bodyToken = "c".repeat(64);
+    const context = makeEnv();
+    const seen: Array<{ code: string; payload: { clientId?: string; sessionTokenHash?: string } }> = [];
+    context.sessionFetch.mockImplementation(async (request: Request) => {
+      seen.push({ code: String(context.idFromName.mock.calls.at(-1)?.[0]), payload: await request.json() });
+      return Response.json({ status: "ready", value: "typed-value" });
+    });
+    const consumed = await countExternal(new Request("https://swop.test/val?c=abcdef", {
+      method: "POST",
+      headers: { ...installed, "X-Swop-Session-Token": headerToken, "Content-Type": "application/json" },
+      body: JSON.stringify({ code: "ZZZZZZ", sessionToken: bodyToken }),
+    }), context.env);
+    expect(consumed.clones).toBe(1);
+    expect(consumed.jsons).toBe(1);
+    expect(consumed.response.status).toBe(200);
+    expect(consumed.response.headers.get("Access-Control-Allow-Origin")).toBe(origin);
+    expect(await consumed.response.json()).toEqual({ status: "ready", value: "typed-value" });
+    expect(seen[0].code).toBe("ABCDEF");
+    expect(seen[0].payload.clientId).toBe("test-client");
+    expect(seen[0].payload.sessionTokenHash).toBe(await sha256Hex(headerToken));
+
+    const emptyHeader = makeEnv();
+    const emptySeen: typeof seen = [];
+    emptyHeader.sessionFetch.mockImplementation(async (request: Request) => {
+      emptySeen.push({ code: String(emptyHeader.idFromName.mock.calls.at(-1)?.[0]), payload: await request.json() });
+      return Response.json({ status: "ready", value: "typed-value" });
+    });
+    const fellThrough = await worker.fetch(new Request("https://swop.test/val?c=", {
+      method: "POST",
+      headers: { ...installed, "X-Swop-Session-Token": "", "Content-Type": "application/json" },
+      body: JSON.stringify({ code: "zzzzzz", sessionToken: bodyToken }),
+    }), emptyHeader.env);
+    expect(fellThrough.status).toBe(200);
+    expect(emptySeen[0].code).toBe("ZZZZZZ");
+    expect(emptySeen[0].payload.sessionTokenHash).toBe(await sha256Hex(bodyToken));
+
+    const whitespace = makeEnv();
+    const blocked = await worker.fetch(new Request("https://swop.test/val?c=%20", {
+      method: "POST",
+      headers: { ...installed, "X-Swop-Session-Token": headerToken, "Content-Type": "application/json" },
+      body: JSON.stringify({ code: "ZZZZZZ", sessionToken: bodyToken }),
+    }), whitespace.env);
+    expect(blocked.status).toBe(400);
+    expect(await blocked.json()).toEqual({ error: "missing c" });
+    expect(blocked.headers.get("Access-Control-Allow-Origin")).toBe(origin);
+    expect(whitespace.sessionFetch).not.toHaveBeenCalled();
+
+    const wrong = makeEnv();
+    let wrongHash = "";
+    wrong.sessionFetch.mockImplementation(async (request: Request) => {
+      wrongHash = (await request.json()).sessionTokenHash;
+      return Response.json({ error: "session token invalid" }, { status: 403 });
+    });
+    const forbidden = await worker.fetch(new Request("https://swop.test/val?c=ABCDEF", {
+      method: "POST",
+      headers: { ...installed, "X-Swop-Session-Token": headerToken, "Content-Type": "application/json" },
+      body: JSON.stringify({ code: "ABCDEF", sessionToken: bodyToken }),
+    }), wrong.env);
+    expect(forbidden.status).toBe(403);
+    expect(await forbidden.json()).toEqual({ error: "session token invalid" });
+    expect(forbidden.headers.get("Access-Control-Allow-Origin")).toBe(origin);
+    expect(wrongHash).toBe(await sha256Hex(headerToken));
+    expect(wrongHash).not.toBe(await sha256Hex(bodyToken));
+  });
+
+  it("still admits every byte before a present header can skip identity parsing", async () => {
+    const context = makeEnv();
+    let pulls = 0;
+    const encoded = [
+      new TextEncoder().encode('{"caption":"TV","draft":"inp'),
+      new TextEncoder().encode('ut"}'),
+    ];
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (pulls < encoded.length) controller.enqueue(encoded[pulls]);
+        else controller.close();
+        pulls += 1;
+      },
+    }, { highWaterMark: 0 });
+    const response = await worker.fetch(new Request("https://swop.test/session", {
+      method: "POST",
+      headers: installed,
+      body,
+      duplex: "half",
+    } as RequestInit), context.env);
+    expect(response.status).toBe(200);
+    expect(pulls).toBeGreaterThan(1);
+    expect(await context.sessionFetch.mock.calls[0][0].json()).toMatchObject({ clientId: "test-client", caption: "TV", draft: "input" });
+  });
+
+  it("still returns the admission read error before client validation", async () => {
+    const context = makeEnv();
+    let pulls = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        if (pulls === 1) controller.enqueue(new Uint8Array([123]));
+        else controller.error(new Error("synthetic read error"));
+      },
+    }, { highWaterMark: 0 });
+    const response = await worker.fetch(new Request("https://swop.test/session", {
+      method: "POST",
+      headers: { ...installed, "X-Swop-Client-Id": "bad" },
+      body,
+      duplex: "half",
+    } as RequestInit), context.env);
+    expect(response.status).toBe(500);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    expect(await response.json()).toEqual({ error: "internal error" });
+    expect(pulls).toBeGreaterThan(1);
+    expect(context.limit).toHaveBeenCalledOnce();
+    expectNoStateAccess(context);
   });
 });

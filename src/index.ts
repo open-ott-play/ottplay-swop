@@ -206,7 +206,9 @@ async function requireClient(
   // Explicit credentials never downgrade to the legacy Device ID allowlist.
   const installation = verifiedInstallation ?? requireInstallation(request, env);
   if (installation instanceof Response) return installation;
-  const body = await objectBody(request);
+  const headerIdentity = request.headers.get(wire.swopClientHeader) ??
+    request.headers.get(wire.swopFallbackClientHeader);
+  const body = headerIdentity !== null ? {} : await objectBody(request);
   let clientId = parseClientId(request, body);
   if (!clientId) {
     const supplied = request.headers.get(wire.swopClientHeader) ??
