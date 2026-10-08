@@ -154,5 +154,5 @@ counters, tags or release records are written. Update the notes when a candidate
 changes; promotion uses the accepted candidate's source rather than a newer branch.
 
 The Python release engine and its regression tests are vendored from
-`victron-venus/venus-os-ci-toolkit` at `2e77561a009328169759841e50d21d5fff514fbe`.
+`victron-venus/venus-os-ci-toolkit` at `73986983fb74b489af72e7cfdd8f4bfc66333229`.
 Consumer workflow routing and packaging adapters remain repository-specific.
