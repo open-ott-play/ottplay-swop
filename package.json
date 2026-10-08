@@ -22,7 +22,7 @@
     "esbuild": "0.28.1",
     "miniflare": "5.20260911.0-alpha",
     "typescript": "^5.9.2",
-    "vitest": "^5.0.3",
+    "vitest": "^4.1.11",
     "wrangler": "^4.34.0"
   }
 }
