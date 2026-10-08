@@ -16,15 +16,18 @@ import io
 import json
 import os
 import plistlib
-import subprocess
+# Subprocess calls below use argument vectors with shell=False.
+import subprocess  # nosec B404
 import sys
 import tarfile
 import tempfile
 import unittest
 import zipfile
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "version_plan.py"
+sys.path.insert(0, str(SCRIPT.parent))
 SPEC = importlib.util.spec_from_file_location("version_plan", SCRIPT)
 version = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(version)
@@ -89,18 +92,20 @@ class PlanTest(unittest.TestCase):
         )
 
     def test_malformed_identity_fails_closed(self):
+        configuration = policy()
+        uppercase_sha = SHA.upper()
         for base in ("v1.2.3", "1.02.3", "1.2", "1.2.3-beta.1", "1.2.3\n", "1.2.٣"):
             with self.subTest(base=base), self.assertRaises(ValueError):
-                version.create_plan(base, "beta", 1, SHA, policy())
+                version.create_plan(base, "beta", 1, SHA, configuration)
         for sequence in (True, 0, -1, "1", None):
             with self.subTest(sequence=sequence), self.assertRaises(ValueError):
-                version.create_plan("1.2.3", "rc", sequence, SHA, policy())
+                version.create_plan("1.2.3", "rc", sequence, SHA, configuration)
         with self.assertRaises(ValueError):
-            version.create_plan("1.2.3", "stable", 1, SHA, policy())
+            version.create_plan("1.2.3", "stable", 1, SHA, configuration)
         with self.assertRaises(ValueError):
-            version.create_plan("1.2.3", "nightly", "20260230235959.1.1", SHA, policy())
+            version.create_plan("1.2.3", "nightly", "20260230235959.1.1", SHA, configuration)
         with self.assertRaises(ValueError):
-            version.create_plan("1.2.3", "beta", 1, SHA.upper(), policy())
+            version.create_plan("1.2.3", "beta", 1, uppercase_sha, configuration)
 
     def test_real_nightly_run_fits_uv_numeric_limit(self):
         plan = version.create_plan(
@@ -278,6 +283,7 @@ class AdapterTest(unittest.TestCase):  # pylint: disable=too-many-public-methods
         self.assertFalse(list(self.root.glob(".version-sync-*")))
 
     def test_json_missing_duplicate_and_wrong_owner_rejected(self):
+        files = policy()["versioning"]["files"]
         for raw in (
             '{"name":"product"}',
             '{"name":"other","version":"2.5.42"}',
@@ -285,7 +291,7 @@ class AdapterTest(unittest.TestCase):  # pylint: disable=too-many-public-methods
         ):
             path = self.write("package.json", raw)
             with self.subTest(raw=raw), self.assertRaises(ValueError):
-                self.sync(policy()["versioning"]["files"])
+                self.sync(files)
             self.assertEqual(path.read_text(), raw)
 
     def test_npm_lock_changes_only_root_owned_entries(self):
@@ -381,6 +387,35 @@ class AdapterTest(unittest.TestCase):  # pylint: disable=too-many-public-methods
             'release.version = "2.5.42-beta.2"', (self.root / "config.toml").read_text()
         )
 
+    def test_toml_table_delimiters_inside_quoted_keys_are_literal(self):
+        for quoted, key in (
+            ('"bracket]#key"', "bracket]#key"),
+            ("'bracket]#key'", "bracket]#key"),
+            ('"escaped\\\"quote]key"', 'escaped"quote]key'),
+        ):
+            with self.subTest(quoted=quoted):
+                before = f"[tool.{quoted}] # trailing [comment]\nversion = '2.5.42'\n"
+                path = self.write("config.toml", before)
+                self.sync([{
+                    "path": "config.toml", "format": "toml",
+                    "field": ["tool", key, "version"],
+                }])
+                self.assertEqual(path.read_text(), before.replace("2.5.42", "2.5.42-beta.2"))
+
+    def test_toml_long_whitespace_and_header_comment_preserve_layout(self):
+        padding = " " * 4000
+        before = (
+            padding + "\n"
+            + padding + "[project]" + padding + "# [brackets] in comment\n"
+            + 'name = "product"\n'
+            + "version" + padding + "=" + padding + '"2.5.42" # retained\n'
+        )
+        path = self.write("pyproject.toml", before)
+        self.sync(
+            [{"path": "pyproject.toml", "format": "toml", "field": "project.version"}]
+        )
+        self.assertEqual(path.read_text(), before.replace('"2.5.42"', '"2.5.42-beta.2"'))
+
     def test_toml_continued_arrays_inline_tables_and_strings_are_not_assignments(self):
         before = (
             """[project]
@@ -434,7 +469,7 @@ version = "2.5.42"
         )
         self.assertEqual(
             path.read_text(),
-            before.replace('VERSION: str = "2.5.42"', "VERSION: str = '2.5.42b2'"),
+            before.replace('VERSION: str = "2.5.42"', 'VERSION: str = "2.5.42b2"'),
         )
 
     def test_python_rejects_computed_shared_or_reassigned_constant(self):
@@ -458,6 +493,23 @@ version = "2.5.42"
         config["version_file"] = "runtime.py"
         version.check_base_versions(self.root, config)
         self.assertEqual(path.read_text(), original)
+
+    def test_python_version_updates_preserve_single_and_double_quotes(self):
+        for quote in ("'", '"'):
+            with self.subTest(quote=quote):
+                before = f"__version__: str = {quote}2.5.42{quote}  # public identity\n"
+                path = self.write("runtime.py", before)
+                self.sync(
+                    [
+                        {
+                            "path": "runtime.py",
+                            "format": "python",
+                            "field": "__version__",
+                            "ecosystem": "pep440",
+                        }
+                    ]
+                )
+                self.assertEqual(path.read_text(), before.replace("2.5.42", "2.5.42b2"))
 
     def test_text_prefix_and_whitespace_preserved(self):
         path = self.write("VERSION", "  v2.5.42\r\n")
@@ -544,7 +596,8 @@ version = "2.5.42"
         (self.root / "linked").symlink_to(self.root, target_is_directory=True)
         for name in (
             "../escape",
-            "/tmp/escape",
+            # Malicious absolute-path fixture verifies rejection; no file is created.
+            "/tmp/escape",  # nosec B108
             "sub/../original.json",
             "alias.json",
             "linked/original.json",
@@ -611,7 +664,8 @@ version = "2.5.42"
             "--plan",
             ".release-plan.json",
         ]
-        subprocess.run(command, check=True, capture_output=True)
+        # Isolated test fixture; explicit argv, never shell interpolation.
+        subprocess.run(command, check=True, capture_output=True)  # nosec B603
         receipt = self.root / ".release-inputs.json"
         before = receipt.read_bytes()
         actual = json.loads(before)
@@ -622,7 +676,8 @@ version = "2.5.42"
             actual["effective_inputs_sha256"],
             version.effective_inputs_digest(actual["files"]),
         )
-        subprocess.run(command + ["--check"], check=True, capture_output=True)
+        # Isolated test fixture; explicit argv, never shell interpolation.
+        subprocess.run(command + ["--check"], check=True, capture_output=True)  # nosec B603
         self.assertEqual(receipt.read_bytes(), before)
 
     def test_git_source_binding_rejects_unrelated_input_changes(self):
@@ -631,7 +686,8 @@ version = "2.5.42"
         )
 
         def git(*args):
-            return subprocess.check_output(
+            # Test harness intentionally uses its fixture-controlled PATH.
+            return subprocess.check_output(  # nosec B603, B607
                 ["git", "-C", str(self.root), *args],
                 stderr=subprocess.DEVNULL,
                 text=True,
@@ -672,7 +728,8 @@ version = "2.5.42"
         self.write("VERSION", "2.5.42\n")
 
         def git(*args):
-            return subprocess.check_output(
+            # Test harness intentionally uses its fixture-controlled PATH.
+            return subprocess.check_output(  # nosec B603, B607
                 ["git", "-C", str(self.root), *args],
                 stderr=subprocess.DEVNULL,
                 text=True,
@@ -915,8 +972,9 @@ class ArtifactTest(unittest.TestCase):
 
     def test_oci_missing_or_wrong_label_on_any_platform_fails(self):
         for label in (None, "2.5.42", "2.5.41-beta.2"):
+            entries = self.oci_entries(("2.5.42-beta.2", label), nested=True)
             with self.subTest(label=label), self.assertRaises(ValueError):
-                self.verify_oci(self.oci_entries(("2.5.42-beta.2", label), nested=True))
+                self.verify_oci(entries)
 
     def test_oci_tampered_config_digest_and_size_fail(self):
         original = self.oci_entries()
@@ -946,8 +1004,9 @@ class ArtifactTest(unittest.TestCase):
             self.verify_oci(unsupported)
 
     def test_oci_no_runnable_image_or_disguised_attestation_fails(self):
+        empty_entries = self.oci_entries((), attestation=True)
         with self.assertRaisesRegex(ValueError, "no runnable images"):
-            self.verify_oci(self.oci_entries((), attestation=True))
+            self.verify_oci(empty_entries)
         entries = self.oci_entries()
         index = json.loads(entries["index.json"])
         descriptor = index["manifests"][0]
@@ -1173,6 +1232,77 @@ class ArtifactTest(unittest.TestCase):
         path.write_bytes(b"binary")
         with self.assertRaisesRegex(ValueError, "Unsupported version format"):
             version.verify_artifact(path, {"format": "apk"}, self.plan)
+
+
+class EvidenceOutputTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.parent = Path(self.temporary.name)
+        self.root = self.parent / "checkout"
+        self.root.mkdir()
+        self.config = policy()
+        self.plan = version.create_plan("2.5.42", "beta", 1, SHA, self.config)
+        (self.root / "package.json").write_text('{"name":"product","version":"2.5.42"}')
+        (self.root / ".release-policy.json").write_text(json.dumps(self.config))
+        (self.root / ".release-plan.json").write_text(json.dumps(self.plan))
+        self.outside = self.parent / "outside.json"
+        self.outside.write_bytes(b"outside sentinel\n")
+
+    def sync(self, output):
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            return version.main(
+                [
+                    "sync",
+                    "--root",
+                    str(self.root),
+                    "--plan",
+                    ".release-plan.json",
+                    "--output",
+                    str(output),
+                ]
+            )
+
+    def test_hardlinked_output_preserves_outside_bytes_and_plan_hashes(self):
+        output = self.root / "custom-evidence.json"
+        os.link(self.outside, output)
+        self.assertEqual(self.sync(output), 0)
+        self.assertEqual(self.outside.read_bytes(), b"outside sentinel\n")
+        raw = output.read_bytes()
+        evidence = json.loads(raw)
+        self.assertEqual(raw, version.json_bytes(evidence) + b"\n")
+        self.assertEqual(evidence["source_sha"], SHA)
+        self.assertEqual(evidence["plan_sha256"], version.plan_digest(self.plan))
+        self.assertEqual(
+            evidence["effective_inputs_sha256"],
+            version.effective_inputs_digest(evidence["files"]),
+        )
+        self.assertEqual(
+            evidence["files"][0]["after_sha256"],
+            version.digest((self.root / "package.json").read_bytes()),
+        )
+        self.assertNotEqual(output.stat().st_ino, self.outside.stat().st_ino)
+
+    def test_output_guards_reject_escape_symlink_directory_and_version_input(self):
+        (self.root / "alias.json").symlink_to(self.outside)
+        (self.root / "directory").mkdir()
+        (self.root / "parent-alias").symlink_to(self.parent, target_is_directory=True)
+        for output in (
+            "../outside.json",
+            self.outside,
+            "alias.json",
+            "directory",
+            "parent-alias/outside.json",
+            "package.json",
+        ):
+            with self.subTest(output=str(output)):
+                self.assertEqual(self.sync(output), 1)
+                self.assertEqual(self.outside.read_bytes(), b"outside sentinel\n")
+                self.assertEqual(
+                    json.loads((self.root / "package.json").read_bytes()),
+                    {"name": "product", "version": "2.5.42-beta.1"},
+                )
+        self.assertEqual(list(self.root.glob(".release-output-*")), [])
 
 
 if __name__ == "__main__":

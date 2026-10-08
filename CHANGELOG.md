@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [0.1.0] - Development line
 
 ### Security
 
@@ -15,3 +15,16 @@
   as a rate-limit setting.
 - Add contribution, security and partial OpenSSF evidence documentation. This
   does not claim a badge or production deployment.
+
+### Release publication
+
+- Read reviewed release notes from the exact package source commit and validate
+  them before writing evidence or advancing the durable publication counter.
+
+### Upgrade
+
+Run `npm ci --ignore-scripts` to obtain the corrected build/test dependencies.
+Existing Worker API calls and stored session records remain compatible. Review
+the root-level example `account_id` before preparing a local configuration. Deploy
+the archived Worker bundle only through the documented explicit operator procedure;
+publishing or promoting a release does not deploy it.
