@@ -141,3 +141,18 @@ Changes to the lifecycle, required gates or version/asset mappings go through PR
 review together with the corresponding workflow changes. Update the toolkit
 template and `.release-policy.json`, then regenerate and review this document and
 the runbook. The README links here rather than duplicating the release procedure.
+
+## Reviewed release notes
+
+Maintain [CHANGELOG.md](CHANGELOG.md) in the same pull request as user-visible
+changes. Before preparing a new base version, add exactly one `## [X.Y.Z]` section
+with meaningful changes and nonempty `### Upgrade` and `### Security` guidance.
+Nightly, beta, RC and stable publication use the matching base-version section
+from the exact package source commit, retaining the build-provenance links.
+Missing, duplicate or incomplete notes fail before retained evidence, publication
+counters, tags or release records are written. Update the notes when a candidate
+changes; promotion uses the accepted candidate's source rather than a newer branch.
+
+The Python release engine and its regression tests are vendored from
+`victron-venus/venus-os-ci-toolkit` at `2e77561a009328169759841e50d21d5fff514fbe`.
+Consumer workflow routing and packaging adapters remain repository-specific.

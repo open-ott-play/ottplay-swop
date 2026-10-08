@@ -25,7 +25,8 @@ import os
 import plistlib
 import re
 import stat
-import subprocess
+# Subprocess calls below use argument vectors with shell=False.
+import subprocess  # nosec B404
 import sys
 import tarfile
 import tempfile
@@ -34,6 +35,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 import tomllib
+from release_control import atomic_write_bytes
 
 BASE = re.compile(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\Z", re.ASCII)
 SHA = re.compile(r"[0-9a-f]{40}\Z", re.ASCII)
@@ -784,6 +786,11 @@ def _python_edit(raw, declaration, value):
     start = sum(map(len, lines[: node.lineno - 1])) + node.col_offset
     end = sum(map(len, lines[: node.end_lineno - 1])) + node.end_col_offset
     literal = repr(replacement).encode()
+    if isinstance(replacement, str) and raw[start:end].startswith(b'"'):
+        # Preserve double-quoted source constants so version-only PRs do not
+        # change a repository's formatter style. JSON strings are Python
+        # string literals for the validated numeric/candidate version values.
+        literal = json.dumps(replacement, ensure_ascii=False).encode()
     result = raw[:start] + literal + raw[end:]
     ast.parse(result)
     return result, [node.value]
@@ -1042,7 +1049,8 @@ def verify_checkout(root, policy, plan):
     root = Path(root).resolve(strict=True)
     if not (root / ".git").exists():
         return
-    head = subprocess.check_output(
+    # Developer/CI toolchain selected by the invoking operator via PATH.
+    head = subprocess.check_output(  # nosec B603, B607
         ["git", "-C", str(root), "rev-parse", "HEAD"], text=True
     ).strip()
     require(
@@ -1060,7 +1068,8 @@ def verify_checkout(root, policy, plan):
     }
     for name, declarations in grouped.items():
         _relative(name)
-        original = subprocess.check_output(
+        # Developer/CI toolchain selected by the invoking operator via PATH.
+        original = subprocess.check_output(  # nosec B603, B607
             [
                 "git",
                 "-C",
@@ -1614,7 +1623,8 @@ def main(argv=None):  # pylint: disable=too-many-locals
                     not in {item["path"] for item in policy["versioning"]["files"]},
                     "Evidence output must not overwrite a version input",
                 )
-                output.write_bytes(
+                atomic_write_bytes(
+                    root / output.name,
                     json_bytes(
                         {
                             "schema": 1,
@@ -1624,7 +1634,7 @@ def main(argv=None):  # pylint: disable=too-many-locals
                             "effective_inputs_sha256": effective_inputs_digest(result),
                         }
                     )
-                    + b"\n"
+                    + b"\n",
                 )
         print(json.dumps(result, indent=2))
         return 0
