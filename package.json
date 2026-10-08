@@ -23,6 +23,6 @@
     "miniflare": "5.20260911.0-alpha",
     "typescript": "^5.9.2",
     "vitest": "^4.1.11",
-    "wrangler": "^4.34.0"
+    "wrangler": "^4.147.0"
   }
 }
