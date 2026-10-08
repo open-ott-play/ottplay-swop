@@ -153,6 +153,13 @@ Missing, duplicate or incomplete notes fail before retained evidence, publicatio
 counters, tags or release records are written. Update the notes when a candidate
 changes; promotion uses the accepted candidate's source rather than a newer branch.
 
+Use ATX headings (`#`, `##`, `###`) for the release structure; up to three
+leading spaces are supported. A section ends at the next heading of the same
+or a higher level. Setext-style underlines within the selected release section
+are rejected, including ambiguous text/comment/underline sequences. Use ATX
+headings instead, or put a blank line before a thematic `---` separator.
+Fenced or indented code examples and commented-out text do not define sections.
+
 The Python release engine and its regression tests are vendored from
-`victron-venus/venus-os-ci-toolkit` at `35cb97120a0be0cb976412a63ded478390db6e09`.
+`victron-venus/venus-os-ci-toolkit` at `6f3bac867a101441e029ee7c20c5aa92541eb308`.
 Consumer workflow routing and packaging adapters remain repository-specific.
