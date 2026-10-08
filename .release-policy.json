@@ -50,7 +50,7 @@
         "field": "version"
       }
     ],
-    "toolkit_revision": "73986983fb74b489af72e7cfdd8f4bfc66333229"
+    "toolkit_revision": "2d4da2b50ecf688a17fe48f172748601341d7dd4"
   },
   "single_entry_ci": true,
   "change_scope": {
