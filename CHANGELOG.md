@@ -21,6 +21,9 @@
 - Read reviewed release notes from the exact package source commit and validate
   them before writing evidence or advancing the durable publication counter.
 
+- Version updates preserve quoted TOML keys containing `=` or `#`, including
+  unrelated keys, without changing comments or surrounding file layout.
+
 ### Upgrade
 
 Run `npm ci --ignore-scripts` to obtain the corrected build/test dependencies.
