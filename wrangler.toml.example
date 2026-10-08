@@ -5,6 +5,8 @@
 name = "ottplay-swop"
 main = "src/index.ts"
 compatibility_date = "2025-09-01"
+# Account settings belong to the root, before any TOML table.
+# account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"
 
 [[durable_objects.bindings]]
 name = "SESSIONS"
@@ -18,8 +20,6 @@ new_sqlite_classes = ["SwopSession"]
 name = "REQUEST_RATE_LIMIT"
 namespace_id = "1001"
 simple = { limit = 240, period = 60 }
-
-# account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"
 
 [[kv_namespaces]]
 binding = "SWOP"

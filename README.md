@@ -269,3 +269,9 @@ Requires Terraform ≥ 1.5 (HCP Terraform `cloud {}` block; not the old `backend
 - package script:build:terraform -> helper that fills `terraform/build/worker.js`
 - `scripts/build-worker-for-terraform.sh` — required before `terraform plan`/`apply`
 - `scripts/render-wrangler.sh` — fill local `wrangler.toml` from terraform outputs for dev/tail (run from **repo root**)
+
+## Project maintenance
+
+See [contribution and test requirements](CONTRIBUTING.md), the
+[security reporting policy](SECURITY.md), [security design](docs/security-design.md),
+and the [OpenSSF evidence and remaining criteria](docs/openssf-evidence.md).
