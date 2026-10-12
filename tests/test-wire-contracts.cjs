@@ -1,11 +1,12 @@
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm"), assert = require("node:assert/strict");
 const root = path.resolve(__dirname, "..");
-const ts = require("typescript");
+const { transformSync } = require("esbuild");
 function load(file, extra = {}) {
  const box = { exports: {}, console, URL, Request, Response, TextEncoder, Uint8Array, Date, Error, ...extra };
+ box.module = { exports: box.exports };
  box.require = (p) => load(path.resolve(path.dirname(file), p) + ".ts", extra);
- vm.runInNewContext(ts.transpileModule(fs.readFileSync(file, "utf8"), {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022}}).outputText, box, {filename:file});
- return box.exports;
+ vm.runInNewContext(transformSync(fs.readFileSync(file, "utf8"), { loader: "ts", format: "cjs", target: "es2022", sourcefile: file }).code, box, {filename:file});
+ return box.module.exports;
 }
 async function swop(){const out=[];for(const item of [
  {name:'health',path:'/health',method:'GET'},{name:'missing-client'},{name:'short-client',id:'1234567'},{name:'unlisted',id:'unlisted-device'},{name:'session-default'},{name:'session-malformed',body:'{'},{name:'session-null',body:'null'}, {name:'session-types',body:'{"caption":42,"draft":null}'},{name:'session-limits',body:JSON.stringify({caption:'é'.repeat(201),draft:'😀'.repeat(2001)})},...['0','-1','abc','0.1','60.9'].map(ttl=>({name:'ttl-'+ttl,ttl})),

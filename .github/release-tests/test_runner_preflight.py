@@ -485,7 +485,7 @@ class MetadataPathTests(unittest.TestCase):
 
 
 class BoundedDownloadTests(unittest.TestCase):
-    def fetch(self, program, path="releases/assets/1", mode="binary"):
+    def fetch(self, program, path="releases/assets/1", mode="binary", *, timeout=5):
         self.calls = []
         real_popen = subprocess.Popen
 
@@ -498,7 +498,7 @@ class BoundedDownloadTests(unittest.TestCase):
             patch.object(preflight, "MAX_BINARY", 64),
             patch.object(preflight, "MAX_API_BYTES", 64),
             patch.object(preflight, "MAX_ERROR_BYTES", 64),
-            patch.object(preflight, "DOWNLOAD_TIMEOUT", 0.2),
+            patch.object(preflight, "DOWNLOAD_TIMEOUT", timeout),
         ):
             client = preflight.PreflightGitHub("owner/repo")
             return (
@@ -516,7 +516,7 @@ class BoundedDownloadTests(unittest.TestCase):
 
     def test_stalled_download_times_out_without_retry(self):
         with self.assertRaisesRegex(rc.ReleaseError, "timed out"):
-            self.fetch("import time; time.sleep(10)")
+            self.fetch("import time; time.sleep(10)", timeout=0.2)
 
     def test_nonzero_transport_fails(self):
         with self.assertRaisesRegex(rc.ReleaseError, "download failed"):
@@ -524,7 +524,7 @@ class BoundedDownloadTests(unittest.TestCase):
 
     def test_closed_pipes_do_not_allow_process_to_outlive_deadline(self):
         with self.assertRaisesRegex(rc.ReleaseError, "did not finish"):
-            self.fetch("import os,time; os.close(1); os.close(2); time.sleep(10)")
+            self.fetch("import os,time; os.close(1); os.close(2); time.sleep(10)", timeout=0.2)
 
     def test_json_and_paginated_metadata_are_bounded(self):
         for mode, path in (
@@ -541,7 +541,7 @@ class BoundedDownloadTests(unittest.TestCase):
 
     def test_metadata_timeout_is_bounded(self):
         with self.assertRaisesRegex(rc.ReleaseError, "timed out"):
-            self.fetch("import time; time.sleep(10)", preflight.state.READ_PATH, "json")
+            self.fetch("import time; time.sleep(10)", preflight.state.READ_PATH, "json", timeout=0.2)
         self.assertEqual(len(self.calls), 1)
 
     def test_stderr_is_bounded_and_never_echoed(self):
