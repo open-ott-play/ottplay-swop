@@ -161,5 +161,5 @@ headings instead, or put a blank line before a thematic `---` separator.
 Fenced or indented code examples and commented-out text do not define sections.
 
 The Python release engine and its regression tests are vendored from
-`victron-venus/venus-os-ci-toolkit` at `9e41c363f4dec0156552da36ef0de3da366aa4fe`.
+`victron-venus/venus-os-ci-toolkit` at `ab9f337e5fa49c263c873d65c9e50dde7249af56`.
 Consumer workflow routing and packaging adapters remain repository-specific.
