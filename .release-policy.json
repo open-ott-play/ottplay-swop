@@ -50,7 +50,7 @@
         "field": "version"
       }
     ],
-    "toolkit_revision": "ab9f337e5fa49c263c873d65c9e50dde7249af56"
+    "toolkit_revision": "373eaac8e45b2ff2fbd4250ca4d55db3a28be3cc"
   },
   "single_entry_ci": true,
   "change_scope": {
@@ -60,5 +60,9 @@
       "codeql.yml"
     ]
   },
-  "release_notes": "CHANGELOG.md"
+  "release_notes": "CHANGELOG.md",
+  "fuzzing": {
+    "toolkit_ref": "373eaac8e45b2ff2fbd4250ca4d55db3a28be3cc"
+  },
+  "toolkit_revision": "373eaac8e45b2ff2fbd4250ca4d55db3a28be3cc"
 }

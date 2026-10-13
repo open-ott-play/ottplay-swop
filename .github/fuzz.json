@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "language": "javascript",
+  "setup": [
+    [
+      "npm",
+      "ci",
+      "--prefix",
+      "fuzz",
+      "--ignore-scripts",
+      "--no-audit",
+      "--no-fund"
+    ],
+    [
+      "node",
+      "fuzz/build.mjs"
+    ]
+  ],
+  "targets": [
+    {
+      "name": "installation-auth",
+      "engine": "libfuzzer",
+      "command": [
+        "node",
+        "fuzz/node_modules/@jazzer.js/core/dist/cli.js",
+        "fuzz/installation-auth.mjs",
+        "--"
+      ],
+      "corpus": "fuzz/corpus/installation-auth",
+      "seconds": 60
+    },
+    {
+      "name": "wire-contracts",
+      "engine": "libfuzzer",
+      "command": [
+        "node",
+        "fuzz/node_modules/@jazzer.js/core/dist/cli.js",
+        "fuzz/wire-contracts.mjs",
+        "--sync",
+        "--"
+      ],
+      "corpus": "fuzz/corpus/wire-contracts",
+      "seconds": 60
+    }
+  ]
+}
