@@ -1,0 +1,11 @@
+{
+  "name": "ottplay-swop-fuzz",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Isolated RC-only native fuzzing tools; never shipped with the browser app",
+  "devDependencies": {
+    "@jazzer.js/core": "4.0.0",
+    "typescript": "6.0.3"
+  }
+}

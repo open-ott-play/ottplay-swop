@@ -4,6 +4,10 @@
 
 ### Security
 
+- Qualify public RCs with bounded, offline Jazzer.js mutation campaigns for
+  installation authorization and wire validation. Beta and ordinary PR checks
+  remain free of mutation campaigns.
+
 - Pin the Miniflare toolchain's transitive `sharp` and `undici` dependencies to
   0.35.5 and 7.29.1 and refresh `source-map-js` to 1.2.2. Reinstall development
   dependencies with `npm ci --ignore-scripts`. These are build/test tools; the

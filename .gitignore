@@ -49,3 +49,9 @@ release-assets/
 # Python release tooling cache
 __pycache__/
 *.py[cod]
+
+# RC-only native fuzzing
+fuzz/.build/
+crash-*
+timeout-*
+oom-*

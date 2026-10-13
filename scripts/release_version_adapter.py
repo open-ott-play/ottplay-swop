@@ -16,7 +16,10 @@ import re
 import subprocess  # nosec B404
 from pathlib import Path
 
-import version_plan
+if __package__:
+    from . import version_plan
+else:
+    import version_plan
 
 
 def resolve_plan_path(root: Path) -> Path:
@@ -33,7 +36,7 @@ def resolve_plan_path(root: Path) -> Path:
 def checked_version(root: Path, base: str, channel: str) -> str:
     """Check every declared input and return the actual SemVer package version."""
     if not re.fullmatch(
-        r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", base
+        r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", base, re.ASCII
     ):
         raise ValueError("Release version must be a numeric base X.Y.Z")
     if channel not in {"nightly", "beta", "rc", "stable"}:

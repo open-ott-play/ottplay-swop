@@ -1,5 +1,7 @@
 # ottplay-swop
 
+[![Fuzzing: RC only](https://img.shields.io/badge/Fuzzing-RC%20only-blue)](docs/fuzzing.md)
+
 Cloudflare Worker for one-time session handoff: desktop creates a short code, mobile fills a form, desktop polls and burns the value after read.
 
 <!-- ci-release-process:start -->
@@ -273,3 +275,10 @@ Requires Terraform ≥ 1.5 (HCP Terraform `cloud {}` block; not the old `backend
 See [contribution and test requirements](CONTRIBUTING.md), the
 [security reporting policy](SECURITY.md), [security design](docs/security-design.md),
 and the [OpenSSF evidence and remaining criteria](docs/openssf-evidence.md).
+
+## RC fuzzing
+
+Public release candidates run bounded, offline mutation campaigns against
+installation authorization and wire validation. See the [fuzzing guide](docs/fuzzing.md)
+for targets, synthetic credentials, budgets, diagnostics and reproduction.
+Ordinary PRs and beta builds do not run mutation campaigns.
