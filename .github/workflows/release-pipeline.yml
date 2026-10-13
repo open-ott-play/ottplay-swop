@@ -91,7 +91,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
       - name: Store exact version plan before building
         if: ${{ steps.metadata.outputs.build == 'true' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ${{ steps.metadata.outputs.plan_artifact }}
           path: .release-plan.json
@@ -189,7 +189,7 @@ jobs:
         run: python3 scripts/release_versioned.py publish --repo "$GITHUB_REPOSITORY" --assets .release-assets
       - name: Store immutable promotion evidence
         if: ${{ steps.publication.outputs.status != 'superseded' && steps.publication.outputs.status != 'reused' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: release-evidence
           path: .release-evidence/release-manifest.json
@@ -256,7 +256,7 @@ jobs:
         run: python3 scripts/release_versioned.py publish --repo "$GITHUB_REPOSITORY" --assets .release-assets
       - name: Store immutable promotion evidence
         if: ${{ steps.publication.outputs.status != 'superseded' && steps.publication.outputs.status != 'reused' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: release-evidence
           path: .release-evidence/release-manifest.json

@@ -59,7 +59,7 @@ jobs:
         RELEASE_ASSET_PATTERN_0: release-output/ottplay-swop-worker.tar.gz
       run: python3 scripts/stage_release_assets.py --target "$RELEASE_ASSET_TARGET" --pattern "$RELEASE_ASSET_PATTERN_0"
     - name: Store release assets
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: release-assets-worker
         path: release-assets/worker/*
