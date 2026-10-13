@@ -4,13 +4,20 @@ import { requireInstallation } from './.build/installation-auth.js';
 const secret = 'synthetic_fuzz_credential_0123456789';
 const allowed = 'https://fuzz-client.invalid';
 const disallowed = 'https://other-client.invalid';
+const refererOrigins = new Map([
+  [allowed + '/page', allowed],
+  [disallowed + '/page', disallowed],
+  ['https://fuzz-client.invalid.evil.invalid/page', 'https://fuzz-client.invalid.evil.invalid'],
+  ['https://other-client.invalid/https://fuzz-client.invalid/page', disallowed],
+]);
+const referers = [null, ...refererOrigins.keys(), 'malformed-url'];
 const credential = { id: 'fuzz-installation', token: secret, origins: [allowed] };
 
 export async function fuzz(data) {
   if (data.length < 4 || data.length > 8192) return;
   const auth = [null, `Bearer ${secret}`, `bearer ${secret}`, 'Bearer wrong', `Bearer ${secret}wrong`, `Bearer  ${secret} `][data[0] % 6];
   const origin = [null, allowed, disallowed, 'null', allowed + '/path', 'https://fuzz-client.invalid.evil.invalid'][data[1] % 6];
-  const referer = [null, allowed + '/page', disallowed + '/page', 'malformed-url'][data[2] % 4];
+  const referer = referers[data[2] % referers.length];
   const trusted = Boolean(data[3] & 1), crossSite = Boolean(data[3] & 2);
   const configKind = (data[3] >> 2) % 4;
   const entry = { ...credential, originPolicy: trusted ? 'trusted-proxy' : 'require-origin' };
@@ -33,7 +40,8 @@ export async function fuzz(data) {
     assert.equal(crossSite, false);
     const selected = JSON.parse(config).find(item => item.id === result.installationId);
     assert.ok(selected && auth?.startsWith('Bearer ') && auth.slice(7).trim() === selected.token);
-    const provenance = origin ?? (referer?.startsWith(allowed + '/') ? allowed : referer?.startsWith(disallowed + '/') ? disallowed : null);
+    // Independent oracle: exact generated fixture identity, not URL substring checks.
+    const provenance = origin ?? refererOrigins.get(referer) ?? null;
     assert.ok(selected.origins.includes(provenance) || (selected.originPolicy === 'trusted-proxy' && origin === null && referer === null));
   }
   if (configKind === 0) {
