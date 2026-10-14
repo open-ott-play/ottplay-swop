@@ -1,5 +1,7 @@
 # ottplay-swop
 
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15473/badge)](https://www.bestpractices.dev/en/projects/15473)
+
 [![Fuzzing: RC only](https://img.shields.io/badge/Fuzzing-RC%20only-blue)](docs/fuzzing.md)
 
 Cloudflare Worker for one-time session handoff: desktop creates a short code, mobile fills a form, desktop polls and burns the value after read.
@@ -282,3 +284,9 @@ Public release candidates run bounded, offline mutation campaigns against
 installation authorization and wire validation. See the [fuzzing guide](docs/fuzzing.md)
 for targets, synthetic credentials, budgets, diagnostics and reproduction.
 Ordinary PRs and beta builds do not run mutation campaigns.
+
+## Project practices
+
+[Contribute](CONTRIBUTING.md) · [Governance](GOVERNANCE.md) ·
+[Code of Conduct](CODE_OF_CONDUCT.md) · [Roadmap](ROADMAP.md) ·
+[Quality and assessment scope](docs/quality.md)

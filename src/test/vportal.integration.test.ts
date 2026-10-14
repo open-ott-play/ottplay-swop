@@ -85,3 +85,35 @@ describe("VPortal outgoing fetch in workerd", () => {
     expect(await response.json()).toEqual({ error: "VPortal request failed", code: "invalid_json" });
   });
 });
+
+
+describe("VPortal strict profile", () => {
+  it("disables every relay destination before any outbound request", async () => {
+    const bundled = await build({ entryPoints: ["src/index.ts"], bundle: true, format: "esm", write: false });
+    let calls = 0;
+    const token = "d".repeat(64);
+    const runtime = new Miniflare(convertV4MiniflareOptions({
+      name: "vportal-disabled", modules: true, script: bundled.outputFiles[0].text, compatibilityDate: "2025-09-01",
+      ratelimits: { REQUEST_RATE_LIMIT: { namespace_id: "1002", simple: { limit: 240, period: 60 } } },
+      bindings: {
+        INSTALLATION_CREDENTIALS_JSON: JSON.stringify([
+          { id: "player", token, origins: ["https://player.example"], originPolicy: "trusted-proxy" },
+        ]),
+        VPORTAL_ENDPOINTS_JSON: "[]",
+      },
+      outboundService: async () => { calls++; return new Response("unexpected outbound request"); },
+    }));
+    try {
+      await runtime.ready;
+      for (const url of ["https://portal.example/api/v1/", "http://portal.example/api/v1/"]) {
+        const response = await runtime.dispatchFetch("https://swop.example/vportal/api", {
+          method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ url, params: { app: "ott-play", key: "private-key", action: "get_categories" } }),
+        });
+        expect(response.status).toBe(503);
+        expect(await response.json()).toEqual({ error: "VPortal unavailable" });
+      }
+      expect(calls).toBe(0);
+    } finally { await runtime.dispose(); }
+  }, 30000);
+});

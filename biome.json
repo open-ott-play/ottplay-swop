@@ -3,7 +3,7 @@
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["src/**", "vitest.config.ts", "*.ts"]
+    "includes": ["src/**", "vitest.config.mts", "*.ts"]
   },
   "formatter": { "enabled": true, "formatWithErrors": false, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
   "linter": { "enabled": true, "rules": { "recommended": true, "correctness": { "noUnusedVariables": "error" } } },
