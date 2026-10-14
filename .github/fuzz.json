@@ -42,5 +42,11 @@
       "corpus": "fuzz/corpus/wire-contracts",
       "seconds": 60
     }
+  ],
+  "preflight": [
+    [
+      "node",
+      "fuzz/replay.mjs"
+    ]
   ]
 }

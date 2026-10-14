@@ -32,6 +32,12 @@ jobs:
       - name: TypeScript check
         run: npm run typecheck
 
+      - name: Replay deterministic fuzz target contracts
+        run: |
+          npm ci --prefix fuzz --ignore-scripts --no-audit --no-fund
+          node fuzz/build.mjs
+          node fuzz/replay.mjs
+
       - name: Worker API unit tests
         run: npm test
 
