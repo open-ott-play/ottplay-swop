@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Use an explicit ESM Vitest configuration without changing Worker behavior.
+- Document governance, private reporting and current OpenSSF evidence limits.
+
 ## [0.1.0] - Development line
 
 ### Security
