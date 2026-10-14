@@ -4,7 +4,7 @@
 
 ### Changed
 
-- Qualify this release with the bounded, offline RC fuzz campaign and deterministic seed replay checks.
+- Qualify this release with a bounded RC fuzz campaign, offline target execution, and deterministic seed replay checks.
 - Bind release evidence to the exact source and toolkit revision, validate seed corpora, and retain engine execution counts and diagnostic artifacts.
 - Document the fuzzing scope, resource limits, and the distinction between synthetic checks and target acceptance.
 
@@ -17,9 +17,11 @@ intended target before accepting a stable promotion.
 
 ### Security
 
-The campaign operates offline on synthetic inputs. It rejects missing or invalid
-seed corpora and incomplete execution evidence. These checks do not establish
-untested hardware, integrations, credentials, or deployment behavior.
+Fuzz targets and deterministic preflight commands run offline on synthetic
+inputs. Setup and dependency installation may use the runner network. The
+campaign rejects missing or invalid seed corpora and incomplete execution
+evidence. These checks do not establish untested hardware, integrations,
+credentials, or deployment behavior.
 
 ## Unreleased
 
