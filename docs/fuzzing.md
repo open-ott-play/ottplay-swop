@@ -1,5 +1,9 @@
 # Release-candidate fuzzing
 
+See the [illustrated RC fuzzing process and verified rollout results](https://github.com/victron-venus/venus-os-ci-toolkit/blob/main/docs/rc-fuzzing-results.md)
+for the shared release flow, evidence requirements and a dated cross-project
+snapshot. The project-specific scope and reproduction guidance below still apply.
+
 Public RCs run the real production installation authorization and wire validators
 under [Jazzer.js](https://github.com/CodeIntelligenceTesting/jazzer.js). The shared
 `venus-os-ci-toolkit` workflow is pinned in `.release-policy.json`; targets and
