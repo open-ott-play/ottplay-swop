@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.2] - 2026-10-17
+
+### Documentation
+
+- Correct the Terraform setup instructions and remove unrelated copied guidance.
+- Link the illustrated RC fuzzing process and its verification limits.
+
+### Compatibility and rollback
+
+The Worker implementation, API and stored session format are unchanged from
+0.1.1. This release updates documentation and release identity. Deployment remains
+an explicit operation; retain the previous immutable Worker bundle for rollback.
+
 ## [0.1.1] - Development line
 
 ### Changed
