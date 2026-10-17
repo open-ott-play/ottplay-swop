@@ -178,19 +178,23 @@ The npm overrides keep the Miniflare toolchain on patched `sharp 0.35.5` and
 `undici 7.29.1` dependencies. Tests run directly against Miniflare and Vitest;
 they do not need the separate Cloudflare Vitest worker-pool package.
 
-Note: no CF credentials in terraform; keep them outside .tf and state.
+Keep credentials out of tracked `.tf` and variable files. This module passes
+Worker secret bindings through Terraform, so sensitive values can be retained
+in state and saved plans even when CLI output redacts them. Restrict access to
+those files and the remote workspace; see
+[Terraform sensitive-data handling](https://developer.hashicorp.com/terraform/language/manage-sensitive-data).
 
 ## Infrastructure (Terraform Cloud)
 
 Durable Cloudflare resources — Workers KV namespace **and** the Worker script — are managed with Terraform Cloud.
 
 - **Organization:** `open-ott-play`
-- **Workspace:** `ottplay-swop` — create in the TFC UI if it does not exist yet
+- **Workspace:** `ottplay-swop`, as configured in `terraform/versions.tf`
 - **Working directory:** `terraform`
 - **Execution mode:** Remote (CLI-driven runs upload local `terraform/`, including `terraform/build/worker.js`)
-- **VCS:** optional — connect this GitHub repo in the TFC UI via the org OAuth app when available; until then use CLI-driven remote runs (same pattern as sibling workspaces)
+- **VCS:** optional; CLI-driven remote runs do not require a VCS connection
 - **VCS trigger patterns** (when connected): `terraform/**/*`
-- **Credentials** (never commit; Global API Key auth like personal CF terraform):
+- **Variables** (never commit real credentials; the provider uses Global API Key authentication):
   - `account` — Cloudflare Account ID
   - `email` — Cloudflare login email
   - `key` (sensitive) — Cloudflare Global API Key
@@ -199,7 +203,7 @@ Durable Cloudflare resources — Workers KV namespace **and** the Worker script 
   - `vportal_endpoints` — exact allowed VPortal API URLs as a Terraform `list(string)`; default `[]` disables the relay
   - `installation_credentials_json` (sensitive, optional) — JSON installation registry stored only as a secret binding
   - `admin_token` (sensitive, optional) — when set, Terraform manages the `ADMIN_TOKEN` secret_text binding; when empty, `keep_bindings = ["secret_text"]` preserves the existing Wrangler secret
-  - TFC remote runs (this workspace is remote): set workspace variables above — local bashrc `TF_VAR_*` is **not** used by the TFC runner
+  - For remote runs, configure the variables in the selected HCP Terraform workspace
   - Local overrides only if you switch execution to local or use `terraform.tfvars` / `-var`
 
 ### Build the Worker artifact (required before plan/apply)
@@ -218,49 +222,30 @@ For an import-only change, preserve the exact deployed configuration and `terraf
 
 **Credentials never in git.** Root and `terraform/` gitignores exclude wrangler.toml, tfvars, `.env*`, credential material, `terraform/build/worker.js`, and local Terraform state/plan files.
 
-### Running locally (disconnect from Terraform Cloud)
+<a id="running-locally-disconnect-from-terraform-cloud"></a>
 
-Use this when you want `terraform plan` / `apply` on your machine **without** HCP Terraform remote execution or remote state.
+### Local development and state ownership
 
-Work from the Terraform root: `cd terraform`. The `cloud {}` block lives in `terraform/versions.tf` (organization `open-ott-play`, workspace `ottplay-swop`).
+Use the local Wrangler development flow above for application experiments.
+The checked-in `terraform/versions.tf` selects the `open-ott-play` organization's
+`ottplay-swop` workspace. Configure your own workspace and Cloudflare resources
+for a separate installation; do not assume access to that deployment.
 
-#### Temporary detach (recommended for experiments)
+Moving existing resources between remote and local state is a state migration,
+not a prerequisite for local application development. Removing `.terraform` only discards local
+initialization metadata; it does not transfer resource ownership. Starting a
+fresh local state against existing resources can propose duplicate resources or
+conflict with the remote workspace.
 
-1. Comment out the entire `cloud { ... }` block in `terraform/versions.tf`.
-2. Clear the local backend cache:
-   ```bash
-   cd terraform
-   rm -rf .terraform
-   ```
-3. Re-init (local state by default):
-   ```bash
-   terraform init
-   ```
-4. Provide variables locally — TFC workspace variables are **not** used when detached:
-   ```bash
-   # e.g. terraform.tfvars (gitignored) or:
-   # export TF_VAR_account=... TF_VAR_email=... TF_VAR_key=...
-   terraform plan
-   terraform apply
-   ```
+Before an intentional migration, stop concurrent writers, preserve a protected
+state backup, and review the source and destination state together with the
+resource owners. Verify the resulting plan before any apply and retain a tested
+rollback path. Do not delete a local state file to switch back to remote
+execution or apply the same resources from independent states. State backups and
+saved plans may contain secrets and must stay outside Git.
 
-#### Keep existing remote state locally (optional)
-
-While still attached to TFC (from `terraform/`):
-
-```bash
-terraform state pull > terraform.tfstate
-```
-
-Then comment out `cloud {}` in `versions.tf`, `rm -rf .terraform`, `terraform init`, and confirm with `terraform state list`. Keep `terraform.tfstate` **gitignored** — never commit it.
-
-#### Warnings
-
-- Do not apply from both TFC and local against the same resources without coordinating state (drift / conflicts).
-- To re-enable TFC: uncomment `cloud {}`, remove local `.terraform` (and local state if migrating back), then `terraform init`. Only `state push` / migrate if you know what you are doing.
-- Never commit credentials, `terraform.tfvars` with secrets, or state files.
-
-Requires Terraform ≥ 1.5 (HCP Terraform `cloud {}` block; not the old `backend "remote"` syntax).
+This module requires Terraform **1.15.7 or later**, as declared in
+[`terraform/versions.tf`](terraform/versions.tf).
 
 ## Scripts
 

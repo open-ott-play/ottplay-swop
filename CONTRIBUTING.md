@@ -66,7 +66,6 @@ See [governance](GOVERNANCE.md), [conduct](CODE_OF_CONDUCT.md),
 Use PEP 8's four-space indentation and explicit imports for Python; keep
 maintained Python compatible with the declared runtime and enabled Ruff rules
 where configured. JavaScript/TypeScript uses two-space indentation, semicolons,
-strict modules and explicit interface types where TypeScript is used. Native
-C++ changes follow the surrounding ESPHome style, use explicit bounds and avoid
-unchecked pointer arithmetic. Do not reformat vendored code independently of
-its recorded upstream source. Existing exceptions must be explained in review.
+strict modules and explicit interface types where TypeScript is used. Terraform
+changes follow `terraform fmt` and the module's variable and output conventions.
+Do not reformat vendored code independently of its recorded upstream source. Existing exceptions must be explained in review.
