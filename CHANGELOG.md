@@ -7,11 +7,17 @@
 - Correct the Terraform setup instructions and remove unrelated copied guidance.
 - Link the illustrated RC fuzzing process and its verification limits.
 
-### Compatibility and rollback
+### Upgrade
 
 The Worker implementation, API and stored session format are unchanged from
 0.1.1. This release updates documentation and release identity. Deployment remains
 an explicit operation; retain the previous immutable Worker bundle for rollback.
+
+### Security
+
+This documentation release preserves existing authentication, origin checks and
+single-use session boundaries. It introduces no runtime vulnerability fix and
+does not claim validation against production credentials or a live deployment.
 
 ## [0.1.1] - Development line
 
