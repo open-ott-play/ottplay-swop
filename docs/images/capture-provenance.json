@@ -1,0 +1,13 @@
+{
+  "source_commit": "efa477374bf8600d3dccdcd6a5afa58c0700c32b",
+  "capture_date": "2026-10-17",
+  "browser": "Codex in-app browser",
+  "viewport": {
+    "width": 432,
+    "height": 768
+  },
+  "source_image": "swop-entry.jpg",
+  "source_sha256": "0ccd547e9a7c4bce4f75b662a82a1122157ff47180bd76537c97dd4eb68631f5",
+  "content": "Local Worker entry-page HTML; blank TV code. Local harness returns successful rate-limit checks; no session or credential is configured.",
+  "processing": "Original browser JPEG preserved unchanged; hero uses geometric perspective, rounded corners, background and shadow only."
+}
