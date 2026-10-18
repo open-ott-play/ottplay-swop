@@ -1,5 +1,10 @@
 # ottplay-swop
 
+[![SWOP mobile TV-code entry page in perspective](docs/images/hero.png)](docs/images/swop-entry.jpg)
+
+*The actual mobile entry page, captured locally at 432 × 768 with an empty code.
+No live TV session or account is shown. [Original and regeneration](docs/images/README.md).*
+
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15473/badge)](https://www.bestpractices.dev/en/projects/15473)
 
 [![Fuzzing: RC only](https://img.shields.io/badge/Fuzzing-RC%20only-blue)](docs/fuzzing.md)
