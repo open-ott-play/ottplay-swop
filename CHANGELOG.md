@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.3] - 2026-10-18
+
+### Changed
+
+- Update the Cloudflare Workers type definitions and Wrangler tooling, harden the CI runner configuration, and declare repository code owners.
+
+### Upgrade
+
+Worker APIs and stored session formats are unchanged. Deployment remains an explicit operation; retain the previous immutable Worker bundle for rollback.
+
+### Security
+
+Existing authentication, origin checks, and single-use session boundaries are preserved. Release validation uses synthetic inputs, not production credentials.
+
 ## [0.1.2] - 2026-10-17
 
 ### Documentation
