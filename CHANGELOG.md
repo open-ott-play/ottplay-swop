@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.1.4] - Unreleased
+
+### Fixed
+
+- Expose explicit cursors and completion state when listing admin clients, so
+  entries beyond the first KV page are reachable, including after empty pages.
+- Bound each page to 100 clients and four simultaneous metadata reads. Reject
+  invalid cursors and malformed continuation responses without looping.
+
+### Upgrade
+
+Admin callers that need the full allowlist must follow the returned cursor until
+`list_complete` is true. The existing `clients` array remains, with additive
+pagination fields. Stored sessions and allowlist records are unchanged. Deploy
+the immutable Worker bundle explicitly; retain the previous bundle for rollback.
+
+### Security
+
+Every page requires the existing admin token. Errors remain sanitized and tests
+use synthetic KV records, without production credentials or Cloudflare writes.
+
 ## [0.1.3] - 2026-10-18
 
 ### Changed
