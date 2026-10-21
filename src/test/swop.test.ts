@@ -151,8 +151,10 @@ describe("Swop Worker", () => {
             clientId: `client-${index}`,
             ...([2, 5, 8].includes(index) ? {} : { allowedAt: index, note: `note-${index}` }),
           })),
+          list_complete: false,
+          cursor: "next-page",
         });
-        expect(kv.list).toHaveBeenCalledExactlyOnceWith({ prefix: "allow:" });
+        expect(kv.list).toHaveBeenCalledExactlyOnceWith({ prefix: "allow:", limit: 100 });
       } finally {
         vi.useRealTimers();
       }
@@ -165,6 +167,7 @@ describe("Swop Worker", () => {
         const kv = env.SWOP as MockKV;
         kv.list.mockResolvedValue({
           keys: Array.from({ length: 12 }, (_, index) => ({ name: `allow:client-${index}` })),
+          list_complete: true,
         });
         let active = 0;
         kv.get.mockImplementation((key: string) => {
@@ -194,12 +197,86 @@ describe("Swop Worker", () => {
     it("returns an empty list without reading metadata", async () => {
       const env = makeEnv();
       const kv = env.SWOP as MockKV;
-      kv.list.mockResolvedValue({ keys: [] });
+      kv.list.mockResolvedValue({ keys: [], list_complete: true });
       const res = await fetch(
         req("GET", "/admin/clients", { Authorization: "Bearer secret-token" }), env
       );
-      expect(await res.json()).toEqual({ clients: [] });
+      expect(await res.json()).toEqual({ clients: [], list_complete: true, cursor: null });
       expect(kv.get).not.toHaveBeenCalled();
+    });
+
+    it("enumerates all pages, including an empty incomplete page, using opaque cursors", async () => {
+      const env = makeEnv();
+      const kv = env.SWOP as MockKV;
+      const opaque = "next+/= cursor";
+      kv.list.mockResolvedValueOnce({ keys: [], list_complete: false, cursor: opaque })
+        .mockResolvedValueOnce({ keys: [{ name: "allow:client-a" }], list_complete: false, cursor: "last" })
+        .mockResolvedValueOnce({ keys: [{ name: "allow:client-b" }], list_complete: true, cursor: "" });
+      kv.get.mockImplementation(async (key: string) => JSON.stringify({ allowedAt: key.endsWith("a") ? 1 : 2 }));
+      let cursor: string | null = null;
+      const clients: unknown[] = [];
+      for (let page = 0; page < 3; page++) {
+        const query = cursor === null ? "" : "?" + new URLSearchParams({ cursor });
+        const response = await fetch(req("GET", "/admin/clients" + query,
+          { Authorization: "Bearer secret-token" }), env);
+        expect(response.status).toBe(200);
+        const body = await response.json() as { clients: unknown[]; list_complete: boolean; cursor: string | null };
+        expect(body.list_complete).toBe(page === 2);
+        clients.push(...body.clients);
+        cursor = body.cursor;
+      }
+      expect(cursor).toBeNull();
+      expect(clients).toEqual([{ clientId: "client-a", allowedAt: 1 }, { clientId: "client-b", allowedAt: 2 }]);
+      expect(kv.list.mock.calls).toEqual([
+        [{ prefix: "allow:", limit: 100 }],
+        [{ prefix: "allow:", limit: 100, cursor: opaque }],
+        [{ prefix: "allow:", limit: 100, cursor: "last" }],
+      ]);
+    });
+
+    it.each(["", "x".repeat(4097), "bad\u0000cursor", "bad\nvalue"])(
+      "rejects invalid cursor input before accessing storage", async (cursor) => {
+        const env = makeEnv();
+        const response = await fetch(req("GET", "/admin/clients?" + new URLSearchParams({ cursor }),
+          { Authorization: "Bearer secret-token" }), env);
+        expect(response.status).toBe(400);
+        expect(env.SWOP.list).not.toHaveBeenCalled();
+        expect(env.SWOP.get).not.toHaveBeenCalled();
+      });
+
+    it("requires admin authentication on continuation pages and rejects duplicate cursors", async () => {
+      const env = makeEnv();
+      const path = "/admin/clients?cursor=first&cursor=second";
+      expect((await fetch(req("GET", path), env)).status).toBe(401);
+      expect((await fetch(req("GET", path, { Authorization: "Bearer secret-token" }), env)).status).toBe(400);
+      expect(env.SWOP.list).not.toHaveBeenCalled();
+    });
+
+    it.each([undefined, "", "same", "bad\u0000cursor", "x".repeat(4097)])(
+      "rejects broken or repeated storage cursors without looping", async (cursor) => {
+        const env = makeEnv();
+        const kv = env.SWOP as MockKV;
+        kv.list.mockResolvedValue({ keys: [], list_complete: false, cursor });
+        const response = await fetch(req("GET", "/admin/clients?cursor=same",
+          { Authorization: "Bearer secret-token" }), env);
+        expect(response.status).toBe(500);
+        expect(await response.json()).toEqual({ error: "internal error" });
+        expect(kv.list).toHaveBeenCalledTimes(1);
+        expect(kv.get).not.toHaveBeenCalled();
+      });
+
+    it.each([
+      { keys: [], list_complete: undefined },
+      { keys: Array.from({ length: 101 }, (_, index) => ({ name: `allow:client-${index}` })), list_complete: true },
+    ])("rejects invalid or oversized provider pages before reading metadata", async (page) => {
+      const env = makeEnv();
+      env.SWOP.list.mockResolvedValue(page);
+      const response = await fetch(req("GET", "/admin/clients",
+        { Authorization: "Bearer secret-token" }), env);
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({ error: "internal error" });
+      expect(env.SWOP.list).toHaveBeenCalledTimes(1);
+      expect(env.SWOP.get).not.toHaveBeenCalled();
     });
 
     it("delete client", async () => {

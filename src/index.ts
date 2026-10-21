@@ -483,8 +483,32 @@ async function handleAdminDeleteClient(
   return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
 
-async function handleAdminListClients(env: Env): Promise<Response> {
-  const listed = await env.SWOP.list({ prefix: "allow:" });
+const ADMIN_CLIENT_PAGE_SIZE = 100;
+
+function validListCursor(cursor: unknown): cursor is string {
+  return typeof cursor === "string" && cursor.length > 0 && cursor.length <= 4096 &&
+    !/[\u0000-\u001f\u007f]/.test(cursor);
+}
+
+async function handleAdminListClients(url: URL, env: Env): Promise<Response> {
+  const cursors = url.searchParams.getAll("cursor");
+  if (cursors.length > 1 || (cursors.length === 1 && !validListCursor(cursors[0]))) {
+    return json({ error: "invalid cursor" }, 400);
+  }
+  const cursor = cursors[0];
+  // One KV page per request keeps both metadata reads and result count bounded.
+  const listed = await env.SWOP.list({
+    prefix: "allow:",
+    limit: ADMIN_CLIENT_PAGE_SIZE,
+    ...(cursor !== undefined ? { cursor } : {}),
+  });
+  if (listed.keys.length > ADMIN_CLIENT_PAGE_SIZE || typeof listed.list_complete !== "boolean") {
+    throw new Error("Invalid client listing page");
+  }
+  const nextCursor = listed.list_complete ? null : listed.cursor;
+  if (!listed.list_complete && (!validListCursor(nextCursor) || nextCursor === cursor)) {
+    throw new Error("Invalid client listing continuation");
+  }
   const clients: Array<{ clientId: string; allowedAt?: number; note?: string }> =
     [];
   const readConcurrency = 4;
@@ -513,7 +537,7 @@ async function handleAdminListClients(env: Env): Promise<Response> {
       }
     }
   }
-  return json({ clients });
+  return json({ clients, list_complete: listed.list_complete, cursor: nextCursor });
 }
 
 export default {
@@ -565,7 +589,7 @@ export default {
           return await handleAdminDeleteClient(url, env);
         }
         if (request.method === "GET") {
-          return await handleAdminListClients(env);
+          return await handleAdminListClients(url, env);
         }
         return json({ error: "method not allowed" }, 405);
       }

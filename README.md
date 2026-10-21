@@ -126,6 +126,24 @@ never falls back to a legacy allowlist entry.
 An installation credential cannot administer the service. Missing admin
 configuration returns 503; an invalid admin credential returns 401.
 
+`GET /admin/clients` returns one page of at most 100 entries:
+`{"clients": [...], "list_complete": false, "cursor": "opaque-value"}`.
+To enumerate the complete allowlist, send the returned cursor in the next
+request's query string, encoded with `URLSearchParams({cursor})`, and keep the
+same admin Authorization header. Stop only when `list_complete` is true; the
+final cursor is `null`. An empty `clients` array can still have a continuation.
+Do not trim, interpret or reuse a completed cursor. A client should stop on a
+repeated cursor or any error instead of retrying indefinitely.
+
+Each request performs one KV list operation and at most 100 metadata reads,
+with no more than four metadata reads in flight. Cursors must be nonempty,
+contain no ASCII control characters, and be at most 4096 characters; duplicate
+or invalid query cursors return 400. A malformed or immediately repeated KV
+continuation returns a sanitized 500. KV pagination is not a point-in-time
+snapshot: concurrent allowlist updates may affect pages. See Cloudflare's
+[list API](https://developers.cloudflare.com/kv/api/list-keys/) and
+[operation limits](https://developers.cloudflare.com/kv/platform/limits/).
+
 The storage migration retains all allowlist entries and admin credentials.
 Old pending KV sessions expire naturally; start a fresh text-entry session
 following the cutover. See [atomic session migration](docs/atomic-session-migration.md).
