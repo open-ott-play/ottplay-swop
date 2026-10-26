@@ -1,6 +1,29 @@
 # Changelog
 
-## [0.1.4] - Unreleased
+## [0.1.5] - Unreleased
+
+### Changed
+
+- Update Vitest, Wrangler and Cloudflare Workers type definitions together with
+  the reviewed lockfile, and refresh the CodeQL and Python setup action pins.
+
+### Upgrade
+
+Run `npm ci --ignore-scripts` to refresh development dependencies. Worker APIs,
+stored session records and deployment configuration remain compatible. Deploy
+only the archived Worker bundle through the existing explicit procedure;
+publication does not deploy it. Retain the previous bundle for rollback.
+
+### Security
+
+- Pin the transitive Undici development dependency to 7.30.1, addressing
+  GHSA-xjj6-f33q-929c and the upstream 7.30.1 security fixes.
+
+Existing authentication, origin checks and single-use session boundaries are
+unchanged. Automated validation uses synthetic inputs; this release does not
+claim a new production or hardware acceptance test.
+
+## [0.1.4] - 2026-10-24
 
 ### Fixed
 
