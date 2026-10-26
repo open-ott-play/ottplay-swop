@@ -16,6 +16,9 @@ publication does not deploy it. Retain the previous bundle for rollback.
 
 ### Security
 
+- Pin the transitive Undici development dependency to 7.30.1, addressing
+  GHSA-xjj6-f33q-929c and the upstream 7.30.1 security fixes.
+
 Existing authentication, origin checks and single-use session boundaries are
 unchanged. Automated validation uses synthetic inputs; this release does not
 claim a new production or hardware acceptance test.
