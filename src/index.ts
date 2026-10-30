@@ -361,6 +361,9 @@ async function handleSession(
   } catch {
     // empty body ok
   }
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    return json({ error: "JSON object required" }, 400);
+  }
   const caption = typeof body.caption === "string" ? body.caption.slice(0, wire.swopCaptionLimit) : "";
   const draft = typeof body.draft === "string" ? body.draft.slice(0, wire.swopDraftLimit) : "";
   const ttl = ttlSeconds(env);
@@ -413,6 +416,9 @@ async function handleSubmit(request: Request, env: Env): Promise<Response> {
   let body: { code?: string; value?: string; token?: string; entryCode?: string };
   try { body = await request.json(); }
   catch { return json({ error: "Invalid JSON" }, 400); }
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    return json({ error: "JSON object required" }, 400);
+  }
   const code = typeof body.code === "string" ? body.code.trim().toUpperCase() : "";
   const value = typeof body.value === "string" ? body.value : "";
   if (!code || !value) return json({ error: "code and value are required" }, 400);
@@ -450,6 +456,9 @@ async function handleAdminCreateClient(
     body = (await request.json()) as { clientId?: string; note?: string };
   } catch {
     return json({ error: "Invalid JSON" }, 400);
+  }
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    return json({ error: "JSON object required" }, 400);
   }
   const clientId =
     typeof body.clientId === "string" ? body.clientId.trim() : "";

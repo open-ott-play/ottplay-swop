@@ -2,6 +2,13 @@
 
 ## [0.1.5] - Unreleased
 
+### Fixed
+
+- Reject JSON `null`, arrays and scalar request bodies with HTTP 400 when
+  creating sessions, submitting values or adding allowed clients. Invalid
+  request shapes no longer become internal server errors. Empty session
+  creation requests retain their existing default-caption behavior.
+
 ### Changed
 
 - Update Vitest, Wrangler and Cloudflare Workers type definitions together with

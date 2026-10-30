@@ -27,6 +27,13 @@ swop().then(actual => {
  // Keep the archived HTTP responses and admin writes as compatibility contracts;
  // real workerd tests cover the new storage and concurrency behavior.
  for (const item of expected) item.writes=item.writes.filter(write=>String(write.key||write.delete).startsWith('allow:'));
+ // Keep the historical capture intact while explicitly correcting two old
+ // null-body server errors to invalid-request responses.
+ for (const name of ['session-null', 'submit-1']) {
+  const item = expected.find(item => item.name === name);
+  assert.deepEqual(item.responses, [{status:500,body:{error:'internal error'}}]);
+  item.responses = [{status:400,body:{error:'JSON object required'}}];
+ }
  assert.deepEqual(JSON.parse(JSON.stringify(actual)), expected);
- console.log("PASS 27 immutable SWOP HTTP/service wire contracts");
+ console.log("PASS 27 SWOP HTTP/service contracts (including corrected null-body responses)");
 }).catch(error => { console.error(error); process.exitCode = 1; });
