@@ -240,7 +240,7 @@ describe("header presence skips the unused identity body", () => {
     expect(session).toMatchObject({ installationId: "player-host", clientId, caption: "TV", draft: "input" });
   });
 
-  it("keeps malformed and absent header-owned bodies on the existing default and null paths", async () => {
+  it("preserves default bodies and reports a null body to the authorized origin", async () => {
     const malformed = makeEnv();
     const bad = await countExternal(new Request("https://swop.test/session", {
       method: "POST",
@@ -268,9 +268,9 @@ describe("header presence skips the unused identity body", () => {
       headers: { ...installed, "Content-Type": "application/json" },
       body: "null",
     }), nulled.env);
-    expect(response.status).toBe(500);
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
-    expect(await response.json()).toEqual({ error: "internal error" });
+    expect(response.status).toBe(400);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(origin);
+    expect(await response.json()).toEqual({ error: "JSON object required" });
     expect(nulled.sessionFetch).not.toHaveBeenCalled();
   });
 

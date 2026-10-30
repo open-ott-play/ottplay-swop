@@ -58,6 +58,49 @@ describe("Swop Worker", () => {
     vi.resetAllMocks();
   });
 
+  describe("JSON request shape", () => {
+    it.each(["", "{"])("preserves default session creation for an empty or unreadable body", async (body) => {
+      const env = makeEnv();
+      allowlistClient(env);
+      const sessionFetch = vi.fn().mockResolvedValue(Response.json({ ok: true }));
+      env.SESSIONS = {
+        idFromName: vi.fn(),
+        get: vi.fn().mockReturnValue({ fetch: sessionFetch }),
+      } as unknown as DurableObjectNamespace;
+      const response = await fetch(new Request("https://swop.test/session", {
+        method: "POST", headers: { "X-Swop-Client-Id": "client-1" }, body,
+      }), env);
+      expect(response.status).toBe(200);
+      expect(await sessionFetch.mock.calls[0][0].json()).toMatchObject({
+        clientId: "client-1", caption: "", draft: "", ttl: 600,
+      });
+    });
+
+    it.each([null, [], ["value"], "value", 1, false])(
+      "rejects a non-object JSON body without mutating session or client storage: %j", async (body) => {
+        const env = makeEnv();
+        allowlistClient(env);
+        const sessionFetch = vi.fn();
+        env.SESSIONS = {
+          idFromName: vi.fn(),
+          get: vi.fn().mockReturnValue({ fetch: sessionFetch }),
+        } as unknown as DurableObjectNamespace;
+        for (const [path, headers] of [
+          ["/session", { "X-Swop-Client-Id": "client-1" }],
+          ["/submit", {}],
+          ["/admin/clients", { Authorization: "Bearer secret-token" }],
+        ] as const) {
+          const response = await fetch(req("POST", path, headers, body), env);
+          expect(response.status).toBe(400);
+          expect(await response.json()).toEqual({ error: "JSON object required" });
+        }
+        expect(sessionFetch).not.toHaveBeenCalled();
+        expect(env.SWOP.put).not.toHaveBeenCalled();
+        expect(env.SWOP.delete).not.toHaveBeenCalled();
+      }
+    );
+  });
+
   describe("Authorization and deployment gates", () => {
     it("requires client identity before accessing session storage", async () => {
       const env = makeEnv();
