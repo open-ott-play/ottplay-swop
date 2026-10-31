@@ -95,3 +95,23 @@ node fuzz/replay.mjs
 
 The replay preserves the same offline boundaries as the targets above; it does
 not qualify a release or substitute for the RC's isolated campaign.
+
+## Artifact selection and retries
+
+Release artifacts use `-run-<run_id>-attempt-<run_attempt>` names, and the collector selects only the current run and attempt.
+
+Before publication starts, use **Re-run all jobs** only if the allocator and
+release policy permit reuse of that run's reservation. Recreate every required
+input in the same attempt; failed-only or individual retries can leave inputs
+missing, and older artifacts must not fill those gaps.
+
+For a fresh candidate or final build, once publication has started
+(`begin_publication`), or its external publication result is partial or uncertain,
+inspect the existing release, tags and assets before retrying. A consumed build
+number requires a new workflow run and reservation authorized by the release
+policy; an existing immutable tag may also require a new base version. Never
+reset the release ledger, overwrite assets or retag to force a retry. Historical
+byte promotion of an accepted RC keeps its reserved number and follows the
+existing promotion policy.
+
+Fuzzing still requires an explicit RC dispatch from the default branch of a public repository. Its report identifies one source revision and run; it does not prove complete platform coverage or device acceptance. Package receipts additionally bind fresh package publication to the current repository, source SHA, run ID and attempt. Historical promotion and retained-evidence validation keep their existing checks; complete package-set coverage remains a separate requirement. Receipts created before the migration or offline without an Actions identity cannot qualify fresh publication. Run all required producers in one complete workflow attempt after migration; existing release approval and acceptance policies still apply. See [the shared evidence contract](rc-fuzzing.md).
