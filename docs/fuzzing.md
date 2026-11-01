@@ -115,3 +115,20 @@ byte promotion of an accepted RC keeps its reserved number and follows the
 existing promotion policy.
 
 Fuzzing still requires an explicit RC dispatch from the default branch of a public repository. Its report identifies one source revision and run; it does not prove complete platform coverage or device acceptance. Package receipts additionally bind fresh package publication to the current repository, source SHA, run ID and attempt. Historical promotion and retained-evidence validation keep their existing checks; complete package-set coverage remains a separate requirement. Receipts created before the migration or offline without an Actions identity cannot qualify fresh publication. Run all required producers in one complete workflow attempt after migration; existing release approval and acceptance policies still apply. See [the shared evidence contract](rc-fuzzing.md).
+
+### Complete package producer inventory
+
+`versioning.required_build_receipts` declares the exact package and signature
+receipt filenames required by this project's final publisher. Each authenticated
+receipt must match the repository, source commit, workflow run and attempt. A
+missing producer or an unexpected receipt stops fresh publication, even when the
+remaining packages are valid. RC fuzz evidence is checked separately; pre-signing
+checks do not require a signature receipt that has not been created yet.
+
+Before publication begins, rerun all required producers only when the allocator
+and release policy permit reusing that reservation. After publication begins or
+its outcome is uncertain, inspect existing tags, releases and assets before a
+policy-authorized new run; never reset the ledger or mix earlier-attempt packages.
+Historical RC promotion keeps its accepted source policy. Keep this explicit
+inventory aligned with producer changes; it does not replace package-format,
+signature or device acceptance checks.
