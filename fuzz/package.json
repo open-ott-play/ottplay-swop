@@ -6,6 +6,6 @@
   "description": "Isolated RC-only native fuzzing tools; never shipped with the browser app",
   "devDependencies": {
     "@jazzer.js/core": "4.0.0",
-    "typescript": "6.0.3"
+    "typescript": "7.0.2"
   }
 }
