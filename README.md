@@ -198,7 +198,7 @@ JavaScript, query parameters, or the proxy response.
 wrangler.toml is gitignored and must never be committed with real credentials.
 
 The npm overrides keep the Miniflare toolchain on patched `sharp 0.35.5` and
-`undici 7.29.1` dependencies. Tests run directly against Miniflare and Vitest;
+`undici 8.12.4` dependencies. Tests run directly against Miniflare and Vitest;
 they do not need the separate Cloudflare Vitest worker-pool package.
 
 Keep credentials out of tracked `.tf` and variable files. This module passes
