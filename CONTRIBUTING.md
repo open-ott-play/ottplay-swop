@@ -21,7 +21,7 @@ npm run typecheck
 npm test
 ```
 
-Copy wrangler.toml.example to the ignored wrangler.toml and use dummy account/KV IDs for npm run build (Wrangler dry-run). Production publication belongs to the Terraform process. The Miniflare compatibility override pins sharp 0.35.5 and undici 7.29.1 until the upstream toolchain adopts fixed dependencies.
+Copy wrangler.toml.example to the ignored wrangler.toml and use dummy account/KV IDs for npm run build (Wrangler dry-run). Production publication belongs to the Terraform process. The Miniflare compatibility override pins sharp 0.35.5 and undici 8.12.4 until the upstream toolchain adopts fixed dependencies.
 
 The [CI workflow](.github/workflows/ci.yml) is the authoritative list of required jobs.
 Use isolated test data and temporary outputs. Never run a device write, unlock,

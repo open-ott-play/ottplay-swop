@@ -30,7 +30,7 @@ hosted OSS-Fuzz service.
 
 Each target gets 60 seconds, a 10-second per-input timeout and a 2 GiB RSS cap.
 Authentication input is bounded to 8 KiB, wire input to 64 KiB. The fuzz package
-contains exact locked Jazzer.js and TypeScript versions. Setup transpiles the
+contains exact locked Jazzer.js and esbuild versions. Setup transpiles the
 actual TypeScript modules without substituting their implementation. No worker
 deployment, account credentials, KV, Durable Objects or Cloudflare APIs are used.
 These checks do not replace the existing workerd integration tests.
