@@ -226,7 +226,7 @@ repository, target, manifest compatibility and storage limits before replay.
 README badges should state the actual scope, for example:
 
 ```markdown
-[![Fuzzing: RC only](https://img.shields.io/badge/fuzzing-RC_only-blue)](docs/fuzzing.md)
+[![Fuzzing: RC only](https://img.shields.io/badge/fuzzing-RC_only-blue)](fuzzing.md)
 ```
 
 This is a capability badge, not a passing-status badge. Link the repository's

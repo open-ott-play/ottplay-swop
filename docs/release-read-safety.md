@@ -1,3 +1,5 @@
+> Vendored from the shared release toolkit; edit the canonical copy, not this file.
+
 # Release read recovery and rerun validation
 
 This project carries two focused fixes from the shared release toolkit:

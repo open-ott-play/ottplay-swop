@@ -1,3 +1,5 @@
+> Vendored from the shared release toolkit; edit the canonical copy, not this file.
+
 # Early final-build runner check
 
 A final build can spend an hour compiling and downloading its complete matrix

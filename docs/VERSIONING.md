@@ -1,3 +1,5 @@
+> Vendored from the shared release toolkit; edit the canonical copy, not this file.
+
 # Version plans and manifest synchronization
 
 Repositories opt in through `versioning` in `.release-policy.json`. The toolkit
