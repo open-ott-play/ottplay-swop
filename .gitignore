@@ -55,3 +55,4 @@ fuzz/.build/
 crash-*
 timeout-*
 oom-*
+A*S.md
