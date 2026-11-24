@@ -1,7 +1,37 @@
 # Changelog
 
-## [0.1.5] - Unreleased
+## [0.1.6] - Unreleased
 
+### Changed
+
+- keep local instruction files out of git.
+- add a navigation index for docs/.
+- Fix fuzzing scope link and mark vendored release toolkit docs.
+- isolate every auto-merge base edit (#121).
+- preserve merge identity and withdrawn auto-merge requests (#120).
+- classify reviewed documentation paths without heavy fanout (#117).
+- retain full release qualification and changelog validation (#116).
+- migrate dependency updates to Renovate (#115).
+- recheck automatic publication source (#114).
+- reconcile lost creation responses (#113).
+
+### Upgrade
+
+Run `npm ci --ignore-scripts` to refresh development dependencies. Worker APIs,
+stored session records and deployment configuration remain compatible. Deploy
+only the archived Worker bundle through the existing explicit procedure;
+publication does not deploy it. Retain the previous bundle for rollback.
+
+### Security
+
+- Pin the transitive Undici development dependency to 7.30.1, addressing
+  GHSA-xjj6-f33q-929c and the upstream 7.30.1 security fixes.
+
+Existing authentication, origin checks and single-use session boundaries are
+unchanged. Automated validation uses synthetic inputs; this release does not
+claim a new production or hardware acceptance test.
+
+## [0.1.5] - 2026-10-31
 ### Fixed
 
 - Reject JSON `null`, arrays and scalar request bodies with HTTP 400 when
